@@ -169,7 +169,7 @@ router.get('/audit-logs', adminOnly, asyncHandler((_req, res) => {
 
 // ----- Staff --------------------------------------------------------------
 router.get('/staff', adminOnly, asyncHandler((_req, res) => {
-  res.json({ items: getProvider().listCustomers().filter((c) => c.role && c.role !== 'customer') });
+  res.json({ items: getProvider().listStaff() });
 }));
 
 export default router;

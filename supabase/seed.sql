@@ -130,9 +130,9 @@ on conflict (sku) do nothing;
 
 -- ----------------------------------------------------------- coupons
 insert into coupons (code, type, value, min_subtotal_paise, max_discount_paise, active, usage_limit, used_count) values
-  ('POWERPLAY', 'percent', 15, 149900, 75000, true, null, 12),
-  ('OPENING50', 'fixed', 5000, 99900, null, true, 500, 34),
-  ('NEWSEASON', 'percent', 20, 199900, 100000, true, null, 3)
+  ('BOUNDARY10', 'percent', 10, 100000, 50000, true, null, 3),
+  ('FLAT200', 'fixed', 20000, 150000, null, true, 500, 41),
+  ('NEWSEASON15', 'percent', 15, 200000, 75000, true, null, 12)
 on conflict (code) do nothing;
 
 -- ----------------------------------------------------------- content

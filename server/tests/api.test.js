@@ -225,6 +225,18 @@ describe('inventory', () => {
   });
 });
 
+describe('admin staff', () => {
+  it('lists staff accounts (not customers)', async () => {
+    const res = await request(app).get('/api/v1/admin/staff').set(auth(adminToken));
+    expect(res.status).toBe(200);
+    const emails = res.body.items.map((s) => s.email);
+    expect(emails).toContain('admin@boundary11.example');
+    expect(emails).toContain('support@boundary11.example');
+    expect(emails).not.toContain('fan@boundary11.example');
+    expect(res.body.items.every((s) => ['admin', 'support'].includes(s.role))).toBe(true);
+  });
+});
+
 describe('checkout and mock payment', () => {
   const checkoutBody = {
     contactEmail: 'buyer@example.com',

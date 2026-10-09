@@ -596,6 +596,20 @@ export function createDemoProvider() {
       return clone([...byEmail.values()].sort((a, b) => b.totalSpentPaise - a.totalSpentPaise));
     },
 
+    listStaff() {
+      return clone(
+        state.accounts
+          .filter((account) => account.role === 'admin' || account.role === 'support')
+          .map((account) => ({
+            email: account.email,
+            name: account.fullName,
+            role: account.role,
+            status: account.status,
+            createdAt: account.createdAt,
+          })),
+      );
+    },
+
     // ----- Inventory -----------------------------------------------------
     listInventory({ lowOnly = false } = {}) {
       const rows = [];

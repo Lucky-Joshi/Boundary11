@@ -44,6 +44,8 @@ export function createDemoProvider() {
     inventoryMovements: [],
     auditLogs: [],
     reviews: [],
+    contactMessages: [],
+    newsletterSubscribers: [],
   };
 
   // credential store kept separate from the public account objects
@@ -717,6 +719,91 @@ export function createDemoProvider() {
       return clone(account);
     },
 
+    // ----- Reviews -------------------------------------------------------
+    listReviews({ productId, status } = {}) {
+      let items = [...state.reviews];
+      if (productId) items = items.filter((r) => r.productId === productId);
+      if (status) items = items.filter((r) => r.status === status);
+      const enriched = items.map((review) => {
+        const product = findProduct(review.productId);
+        return { ...review, productName: product?.name || '', productSlug: product?.slug || '' };
+      });
+      return clone(enriched.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)));
+    },
+
+    createReview({ productId, userId, authorName, rating, title, body }) {
+      const product = findProduct(productId);
+      if (!product) throw ApiError.notFound('Product not found.');
+      const review = {
+        id: generateId('rev'),
+        productId,
+        userId: userId || null,
+        authorName: authorName || 'Boundary11 fan',
+        rating,
+        title: title || '',
+        body,
+        status: 'published',
+        createdAt: nowISO(),
+      };
+      state.reviews.unshift(review);
+      // Blend the new rating into the product aggregate so the storefront star
+      // rating reflects real reviews without discarding the seeded baseline.
+      const priorCount = product.reviewCount || 0;
+      const priorRating = product.rating || 0;
+      const nextCount = priorCount + 1;
+      product.reviewCount = nextCount;
+      product.rating = Math.round(((priorRating * priorCount + rating) / nextCount) * 10) / 10;
+      recordAudit(userId || 'guest', 'review.create', 'product', productId, `${rating} star`);
+      return clone(review);
+    },
+
+    setReviewStatus(id, status, actor) {
+      const review = state.reviews.find((r) => r.id === id);
+      if (!review) return null;
+      review.status = status;
+      recordAudit(actor, 'review.status', 'review', id, status);
+      return clone(review);
+    },
+
+    // ----- Contact + newsletter -----------------------------------------
+    listContactMessages() {
+      return clone([...state.contactMessages].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)));
+    },
+
+    createContactMessage(input) {
+      const message = {
+        id: generateId('msg'),
+        name: input.name,
+        email: input.email,
+        subject: input.subject,
+        message: input.message,
+        status: 'new',
+        createdAt: nowISO(),
+      };
+      state.contactMessages.unshift(message);
+      return clone(message);
+    },
+
+    setContactMessageStatus(id, status) {
+      const message = state.contactMessages.find((m) => m.id === id);
+      if (!message) return null;
+      message.status = status;
+      return clone(message);
+    },
+
+    listNewsletterSubscribers() {
+      return clone(state.newsletterSubscribers);
+    },
+
+    subscribeNewsletter(email) {
+      const normalized = String(email).trim().toLowerCase();
+      const existing = state.newsletterSubscribers.find((s) => s.email === normalized);
+      if (existing) return { subscriber: clone(existing), already: true };
+      const subscriber = { id: generateId('sub'), email: normalized, createdAt: nowISO() };
+      state.newsletterSubscribers.unshift(subscriber);
+      return { subscriber: clone(subscriber), already: false };
+    },
+
     // ----- Analytics -----------------------------------------------------
     getAnalytics() {
       const paidOrders = state.orders.filter((o) => o.paymentStatus === 'paid');
@@ -787,6 +874,9 @@ export function createDemoProvider() {
       state.cart.clear();
       state.inventoryMovements.length = 0;
       state.auditLogs.length = 0;
+      state.reviews.length = 0;
+      state.contactMessages.length = 0;
+      state.newsletterSubscribers.length = 0;
       seedOrders();
     },
   };

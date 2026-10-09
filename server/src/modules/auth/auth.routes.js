@@ -12,8 +12,8 @@ router.post(
   '/login',
   sensitiveLimiter,
   validate({ body: loginSchema }),
-  asyncHandler((req, res) => {
-    res.json(service.login(req.body));
+  asyncHandler(async (req, res) => {
+    res.json(await service.login(req.body));
   }),
 );
 
@@ -21,13 +21,13 @@ router.post(
   '/register',
   sensitiveLimiter,
   validate({ body: registerSchema }),
-  asyncHandler((req, res) => {
-    res.status(201).json(service.register(req.body));
+  asyncHandler(async (req, res) => {
+    res.status(201).json(await service.register(req.body));
   }),
 );
 
-router.get('/me', requireAuth, asyncHandler((req, res) => {
-  res.json(service.me(req));
+router.get('/me', requireAuth, asyncHandler(async (req, res) => {
+  res.json(await service.me(req));
 }));
 
 export default router;

@@ -33,3 +33,15 @@ export function fetchCollections() {
 export function fetchCollection(slug) {
   return api.get(`/collections/${slug}`);
 }
+
+export function fetchBanners() {
+  return api.get('/banners');
+}
+
+export function fetchProductReviews(slug) {
+  return api.get(`/products/${slug}/reviews`);
+}
+
+export function createProductReview(slug, payload) {
+  return api.post(`/products/${slug}/reviews`, payload);
+}

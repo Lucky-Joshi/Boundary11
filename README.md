@@ -11,9 +11,10 @@ All branding, product names and artwork are original. The project deliberately a
 any cricket board marks, national team crests, sponsor logos or player likenesses, and
 ships no third-party licensed merchandise.
 
-> **Prototype status.** Milestone 1 runs the entire platform on an in-memory **demo
-> provider** with a **mock payment** flow. There is zero setup: no database or payment
-> gateway is required. Supabase is wired in for Milestone 2 (see below).
+> **Prototype status.** By default the platform runs entirely on an in-memory
+> **demo provider** with a **mock payment** flow: zero setup, no database or payment
+> gateway required. Adding Supabase credentials switches the API to the
+> **Supabase provider** automatically (see _Milestone 2_ below).
 
 ---
 
@@ -43,14 +44,16 @@ boundary11/
 │  └─ src/
 │     ├─ config/         # env + logger
 │     ├─ middleware/     # auth, validation, errors, rate limiting
-│     ├─ modules/        # products, categories, cart, orders, auth, inventory, admin, misc
-│     ├─ providers/      # demo (in-memory) provider + selection layer
+│     ├─ modules/        # products, categories, cart, orders, auth, inventory, reviews, admin, misc
+│     ├─ providers/      # demo + supabase providers + selection layer
+│     ├─ utils/          # token, csv and other helpers
 │     └─ data/           # demo catalog seed
 ├─ packages/
 │  └─ shared/            # code shared by API + both frontends
 └─ supabase/
-   ├─ migrations/0001_init.sql   # schema + RLS
-   └─ seed.sql                   # demo content
+   ├─ migrations/0001_init.sql       # core schema + RLS
+   ├─ migrations/0002_engagement.sql # reviews, contact messages, subscribers + RLS
+   └─ seed.sql                       # demo content
 ```
 
 ---
@@ -155,8 +158,10 @@ Base URL: `/api/v1`. Errors use a consistent shape: `{ error: { code, message, f
 | GET    | `/products`                       | Filter, sort, paginate the catalog     |
 | GET    | `/products/:slug`                 | Product detail                         |
 | GET    | `/products/:slug/related`         | Related products                       |
+| GET    | `/products/:slug/reviews`         | Reviews + rating summary for a product |
 | GET    | `/categories`                     | Category list                          |
 | GET    | `/collections` `/collections/:slug` | Collection list / detail             |
+| GET    | `/banners`                        | Active homepage banners                |
 | GET    | `/cart`                           | Cart for the `x-cart-id` header        |
 | POST   | `/cart/items`                     | Add item                               |
 | PATCH  | `/cart/items/:itemId`             | Change quantity                        |
@@ -164,21 +169,50 @@ Base URL: `/api/v1`. Errors use a consistent shape: `{ error: { code, message, f
 | POST   | `/checkout`                       | Create an order (mock payment)         |
 | POST   | `/payments/verify`                | Verify the mock payment outcome        |
 | POST   | `/auth/login` `/auth/register`    | Issue / create account                 |
-| POST   | `/contact` `/newsletter`          | Acknowledged (no email sent in demo)   |
+| POST   | `/contact`                        | Persist a contact message (demo store) |
+| POST   | `/newsletter`                     | Subscribe an email (idempotent)        |
 
 ### Authenticated
 
-| Method | Path             | Notes                                    |
-| ------ | ---------------- | ---------------------------------------- |
-| GET    | `/auth/me`       | Current account                          |
-| GET    | `/orders`        | Own orders (staff see all)               |
-| GET    | `/orders/:id`    | Own order (staff see any)                |
+| Method | Path                        | Notes                                    |
+| ------ | --------------------------- | ---------------------------------------- |
+| GET    | `/auth/me`                  | Current account                          |
+| POST   | `/products/:slug/reviews`   | Submit a product review                  |
+| GET    | `/orders`                   | Own orders (staff see all)               |
+| GET    | `/orders/:id`               | Own order (staff see any)                |
 
 ### Admin (staff roles)
 
 `/admin/*` requires an `admin`/`support` token. Highlights: `analytics`, `products` CRUD
 and status changes, `orders` + status updates, `inventory` + `adjustments`, `customers`,
-`discounts`, `content/banners`, `settings`, `audit-logs`, `staff` (admin only).
+`discounts`, `content/banners`, `settings`, `audit-logs`, `staff` (admin only), plus:
+
+| Method | Path                 | Notes                                          |
+| ------ | -------------------- | ---------------------------------------------- |
+| GET    | `/admin/reviews`     | All reviews (filter `?status=`)                |
+| PATCH  | `/admin/reviews/:id` | Moderate a review (admin only)                 |
+| GET    | `/admin/messages`    | Contact messages                               |
+| PATCH  | `/admin/messages/:id`| Update message status                          |
+| GET    | `/admin/subscribers` | Newsletter subscribers                         |
+| GET    | `/admin/exports/:kind` | CSV export — `orders`, `customers`, `inventory` |
+
+---
+
+## Feature highlights
+
+- **Product reviews** — signed-in customers rate 1–5 and review from the product page; the
+  storefront shows a rating breakdown and the admin console moderates each review
+  (publish/reject). Star rating blends with the seeded baseline on new submissions.
+- **Order tracking** — the account order page renders the full `statusHistory` timeline
+  (`pending → paid → …`, plus cancelled/refunded traces).
+- **Coupons** — apply/remove codes in the cart; invalid codes surface a reason
+  (`BOUNDARY10`, `FLAT200`, `NEWSEASON15` in the demo seed).
+- **Banners, contact & newsletter** — the homepage hero is driven by active banners;
+  contact submissions and newsletter sign-ups are persisted and reviewable in admin.
+- **CSV exports** — one-click `orders`, `customers` and `inventory` exports from the admin
+  console (RFC-4180 escaped).
+- **Recently viewed** — a homepage rail of the last products the visitor opened, stored
+  under `b11_recently_viewed`.
 
 ---
 
@@ -188,8 +222,9 @@ and status changes, `orders` + status updates, `inventory` + `adjustments`, `cus
   is ever used for money; formatting is centralised in `@boundary11/shared`.
 - **Auth tokens live in module memory only**, never in `localStorage`. A page refresh
   signs you out. Production should use server-issued httpOnly cookies via Supabase Auth.
-- **Only non-sensitive client state is persisted**: the cart id (`b11_cart_id`) and the
-  wishlist (`b11_wishlist`) live in `localStorage`.
+- **Only non-sensitive client state is persisted**: the cart id (`b11_cart_id`), the
+  wishlist (`b11_wishlist`) and recently viewed products (`b11_recently_viewed`) live in
+  `localStorage`.
 - **Data access goes through a provider interface.** The in-memory `demoProvider` can be
   swapped for a Supabase-backed provider without touching the route/controller layer.
 - **One shared package** holds constants, validation and business maths so the API and
@@ -207,10 +242,11 @@ and status changes, `orders` + status updates, `inventory` + `adjustments`, `cus
 npm test
 ```
 
-Coverage in Milestone 1:
+Coverage:
 
 - `packages/shared` — money, cart totals, catalog helpers, validation (47 tests)
-- `server` — token utilities and the API surface via Supertest (33 tests)
+- `server` — token utilities, provider interface/selection, and the API surface via
+  Supertest, including reviews, contact/newsletter persistence and CSV exports (54 tests)
 - `storefront` — component behaviour with RTL (4 tests)
 - `admin` — auth gate + dashboard flow with RTL (2 tests)
 
@@ -221,18 +257,55 @@ Coverage in Milestone 1:
 
 ## Milestone 2 — Supabase
 
-The `supabase/` folder contains the initial schema and seed. To use it:
+The API now ships **two interchangeable data providers** behind a single
+repository interface (`server/src/providers/index.js`):
 
-```bash
-supabase db reset   # applies supabase/migrations then supabase/seed.sql
-```
+- `demoProvider` — in-memory prototype data (the default).
+- `supabaseProvider` — a real Postgres backend via Supabase.
 
-Next steps once a Supabase project is configured:
+Provider selection is automatic: the API uses Supabase when `SUPABASE_URL` and
+`SUPABASE_SERVICE_ROLE_KEY` are set, and falls back to the demo provider otherwise.
+Every method on the provider interface is asynchronous, so the service layer `await`s
+calls and works identically against either provider.
 
-1. Implement a Supabase-backed provider behind `server/src/providers/index.js`.
-2. Set `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` in `.env` to leave demo mode.
-3. Move auth to Supabase Auth (server-verified sessions, httpOnly cookies).
-4. Replace the mock payment provider with a real gateway and a signed webhook.
+### Enabling Supabase
+
+1. Create a Supabase project.
+2. Apply the schema, then the seed:
+
+   ```bash
+   supabase db reset        # applies supabase/migrations/*, then supabase/seed.sql
+   # or paste supabase/migrations/0001_init.sql and supabase/seed.sql into the SQL editor
+   ```
+
+3. Put the keys in `.env` (server-only, never commit):
+
+   ```
+   SUPABASE_URL=https://<project>.supabase.co
+   SUPABASE_ANON_KEY=<anon public key>
+   SUPABASE_SERVICE_ROLE_KEY=<service_role secret key>
+   ```
+
+4. Restart the API. `/api/v1/health` will report `"mode": "supabase"`.
+
+Notes:
+
+- **Credentials verify through Supabase Auth.** `authenticate()` calls
+  `signInWithPassword` (anon key); `register()` creates the user with the service
+  role and mirrors a row into `profiles`. The API still issues its own short-lived
+  session token, and the role/status is re-read from `profiles` on each request.
+- **Stock is decremented with an optimistic compare-and-set** (`update ... where stock = ?`)
+  so concurrent checkouts cannot oversell a variant.
+- **Row Level Security** is defined in the migration for any direct client access;
+  the server talks to Postgres with the service role.
+- The demo seed accounts (below) are created by `supabase/seed.sql` with the same
+  passwords, so the same logins work in both modes.
+
+Remaining for a production deployment:
+
+1. Replace the mocked `x-cart-id` header with authenticated, server-owned carts.
+2. Move the session token to httpOnly cookies and verify Supabase JWTs end-to-end.
+3. Replace the mock payment provider with a real gateway and a signed webhook.
 
 ---
 

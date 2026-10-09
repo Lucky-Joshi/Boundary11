@@ -2,28 +2,28 @@ import { getProvider } from '../../providers/index.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { listProducts } from '../products/products.service.js';
 
-export function listCategories() {
+export async function listCategories() {
   const provider = getProvider();
-  const products = provider.listProducts();
-  return provider.listCategories().map((category) => ({
+  const [products, categories] = await Promise.all([provider.listProducts(), provider.listCategories()]);
+  return categories.map((category) => ({
     ...category,
     productCount: products.filter((p) => p.categorySlug === category.slug).length,
   }));
 }
 
-export function listCollections() {
+export async function listCollections() {
   const provider = getProvider();
-  const products = provider.listProducts();
-  return provider.listCollections().map((collection) => ({
+  const [products, collections] = await Promise.all([provider.listProducts(), provider.listCollections()]);
+  return collections.map((collection) => ({
     ...collection,
     productCount: products.filter((p) => (p.collections || []).includes(collection.slug)).length,
   }));
 }
 
-export function getCollection(slug) {
+export async function getCollection(slug) {
   const provider = getProvider();
-  const collection = provider.getCollection(slug);
+  const collection = await provider.getCollection(slug);
   if (!collection) throw ApiError.notFound('Collection not found.');
-  const { items, total } = listProducts({ collection: slug, pageSize: 48 });
+  const { items, total } = await listProducts({ collection: slug, pageSize: 48 });
   return { ...collection, products: items, productCount: total };
 }

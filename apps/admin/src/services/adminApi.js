@@ -1,4 +1,24 @@
-import { api } from './api.js';
+import { api, API_URL, getAuthToken } from './api.js';
+
+/** Fetch a CSV export with the staff token and trigger a browser download. */
+export async function downloadExport(kind) {
+  const token = getAuthToken();
+  const response = await fetch(`${API_URL}/admin/exports/${kind}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!response.ok) {
+    throw new Error(`Export failed (${response.status})`);
+  }
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `boundary11-${kind}.csv`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
 
 export const adminApi = {
   analytics: () => api.get('/admin/analytics'),
@@ -48,4 +68,12 @@ export const adminApi = {
   getSettings: () => api.get('/admin/settings'),
   listAuditLogs: () => api.get('/admin/audit-logs'),
   listStaff: () => api.get('/admin/staff'),
+
+  listReviews: (status) => api.get(`/admin/reviews${status ? `?status=${status}` : ''}`),
+  setReviewStatus: (id, status) => api.patch(`/admin/reviews/${id}`, { status }),
+
+  listMessages: () => api.get('/admin/messages'),
+  setMessageStatus: (id, status) => api.patch(`/admin/messages/${id}`, { status }),
+
+  listSubscribers: () => api.get('/admin/subscribers'),
 };

@@ -6,14 +6,24 @@ import { getProvider } from '../../providers/index.js';
 
 const router = Router();
 
-// Contact messages are validated and acknowledged. Email delivery is wired up
-// in a later milestone; nothing is sent yet and we do not pretend otherwise.
+// Active homepage banners, ordered for display in the storefront hero.
+router.get(
+  '/banners',
+  asyncHandler(async (_req, res) => {
+    res.json({ items: await getProvider().listBanners() });
+  }),
+);
+
+// Contact messages are validated, persisted for staff, and acknowledged.
+// Email delivery is not wired up in this prototype and we do not pretend it is.
 router.post(
   '/contact',
   validate({ body: contactSchema }),
-  asyncHandler((req, res) => {
-    res.status(202).json({
+  asyncHandler(async (req, res) => {
+    const saved = await getProvider().createContactMessage(req.body);
+    res.status(201).json({
       received: true,
+      id: saved.id,
       message: 'Thanks — your message has been received. Email delivery is not enabled in this prototype.',
     });
   }),
@@ -22,12 +32,16 @@ router.post(
 router.post(
   '/newsletter',
   validate({ body: newsletterSchema }),
-  asyncHandler((req, res) => {
-    const settings = getProvider().getSettings();
-    res.status(202).json({
+  asyncHandler(async (req, res) => {
+    const settings = await getProvider().getSettings();
+    const { already } = await getProvider().subscribeNewsletter(req.body.email);
+    res.status(already ? 200 : 201).json({
       subscribed: true,
+      already,
       email: req.body.email,
-      message: `Subscribed to ${settings.storeName} updates (prototype — no email is sent).`,
+      message: already
+        ? `You're already subscribed to ${settings.storeName} updates.`
+        : `Subscribed to ${settings.storeName} updates (prototype — no email is sent).`,
     });
   }),
 );

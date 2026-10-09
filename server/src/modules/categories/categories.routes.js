@@ -4,17 +4,17 @@ import * as service from './categories.service.js';
 
 const router = Router();
 
-router.get('/', asyncHandler((_req, res) => {
-  res.json({ items: service.listCategories() });
+router.get('/', asyncHandler(async (_req, res) => {
+  res.json({ items: await service.listCategories() });
 }));
 
 export function collectionsRouter() {
   const collections = Router();
-  collections.get('/', asyncHandler((_req, res) => {
-    res.json({ items: service.listCollections() });
+  collections.get('/', asyncHandler(async (_req, res) => {
+    res.json({ items: await service.listCollections() });
   }));
-  collections.get('/:slug', asyncHandler((req, res) => {
-    res.json(service.getCollection(req.params.slug));
+  collections.get('/:slug', asyncHandler(async (req, res) => {
+    res.json(await service.getCollection(req.params.slug));
   }));
   return collections;
 }

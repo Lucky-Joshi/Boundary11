@@ -19,8 +19,8 @@ router.post(
   '/checkout',
   sensitiveLimiter,
   validate({ body: checkoutSchema }),
-  asyncHandler((req, res) => {
-    res.status(201).json(createCheckout(req));
+  asyncHandler(async (req, res) => {
+    res.status(201).json(await createCheckout(req));
   }),
 );
 
@@ -28,17 +28,17 @@ router.post(
   '/payments/verify',
   sensitiveLimiter,
   validate({ body: verifySchema }),
-  asyncHandler((req, res) => {
-    res.json(verifyPayment(req));
+  asyncHandler(async (req, res) => {
+    res.json(await verifyPayment(req));
   }),
 );
 
-router.get('/orders', requireAuth, asyncHandler((req, res) => {
-  res.json(orders.listOrders(req));
+router.get('/orders', requireAuth, asyncHandler(async (req, res) => {
+  res.json(await orders.listOrders(req));
 }));
 
-router.get('/orders/:id', requireAuth, asyncHandler((req, res) => {
-  res.json(orders.getOrder(req));
+router.get('/orders/:id', requireAuth, asyncHandler(async (req, res) => {
+  res.json(await orders.getOrder(req));
 }));
 
 export default router;

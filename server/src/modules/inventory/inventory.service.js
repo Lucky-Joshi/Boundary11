@@ -1,7 +1,7 @@
 import { getProvider } from '../../providers/index.js';
 
-export function listInventory({ lowOnly } = {}) {
-  const rows = getProvider().listInventory({ lowOnly: lowOnly === true || lowOnly === 'true' });
+export async function listInventory({ lowOnly } = {}) {
+  const rows = await getProvider().listInventory({ lowOnly: lowOnly === true || lowOnly === 'true' });
   return {
     items: rows,
     summary: {
@@ -13,10 +13,10 @@ export function listInventory({ lowOnly } = {}) {
   };
 }
 
-export function listMovements({ variantId } = {}) {
-  return { items: getProvider().listMovements({ variantId }) };
+export async function listMovements({ variantId } = {}) {
+  return { items: await getProvider().listMovements({ variantId }) };
 }
 
-export function adjustInventory(input, actor) {
+export async function adjustInventory(input, actor) {
   return getProvider().adjustInventory(input, actor);
 }

@@ -91,6 +91,35 @@ export const INVENTORY_REASON_LABELS = Object.freeze({
 /** Lowest stock a variant may reach before it is flagged as low stock. */
 export const DEFAULT_LOW_STOCK_THRESHOLD = 5;
 
+/**
+ * Moderation state for customer-submitted product reviews. New reviews start
+ * published in the prototype; staff can hide them or move them back.
+ */
+export const REVIEW_STATUS = Object.freeze({
+  PUBLISHED: 'published',
+  PENDING: 'pending',
+  REJECTED: 'rejected',
+});
+
+export const REVIEW_STATUS_LABELS = Object.freeze({
+  published: 'Published',
+  pending: 'Pending',
+  rejected: 'Rejected',
+});
+
+/** Lifecycle for inbound contact messages handled by support. */
+export const CONTACT_STATUS = Object.freeze({
+  NEW: 'new',
+  READ: 'read',
+  RESOLVED: 'resolved',
+});
+
+export const CONTACT_STATUS_LABELS = Object.freeze({
+  new: 'New',
+  read: 'Read',
+  resolved: 'Resolved',
+});
+
 export const CATEGORY_SLUGS = Object.freeze([
   'jerseys',
   'training',

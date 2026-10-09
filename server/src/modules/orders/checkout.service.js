@@ -10,7 +10,7 @@ import { resolveCartId } from '../cart/cart.service.js';
  * DEMO: no money moves. The returned "payment session" is a mock that the
  * client resolves through POST /payments/verify.
  */
-export function createCheckout(req) {
+export async function createCheckout(req) {
   const provider = getProvider();
   const cartId = resolveCartId(req);
   const {
@@ -22,7 +22,7 @@ export function createCheckout(req) {
     notes,
   } = req.body;
 
-  const order = provider.createOrder({
+  const order = await provider.createOrder({
     cartId,
     contactEmail,
     contactPhone,
@@ -35,7 +35,7 @@ export function createCheckout(req) {
   });
 
   if (paymentMethod === 'cod') {
-    const confirmed = provider.updateOrderStatus(order.id, 'processing', 'Cash on delivery order', 'system');
+    const confirmed = await provider.updateOrderStatus(order.id, 'processing', 'Cash on delivery order', 'system');
     return { order: confirmed, payment: { provider: 'mock', method: 'cod', status: 'on_delivery', amountPaise: confirmed.totalPaise } };
   }
 
@@ -59,10 +59,10 @@ export function createCheckout(req) {
  * server-side; here it simply flips the order status based on the requested
  * demo outcome so success and failure paths can be exercised end to end.
  */
-export function verifyPayment(req) {
+export async function verifyPayment(req) {
   const provider = getProvider();
   const { orderId, outcome } = req.body;
-  const order = provider.getOrder(orderId);
+  const order = await provider.getOrder(orderId);
   if (!order) throw ApiError.notFound('Order not found.');
 
   if (order.paymentStatus === 'paid') {
@@ -71,7 +71,7 @@ export function verifyPayment(req) {
   }
 
   if (outcome === 'failure') {
-    const failed = provider.markPaymentFailed(order.id);
+    const failed = await provider.markPaymentFailed(order.id);
     return {
       order: failed,
       payment: {
@@ -82,7 +82,7 @@ export function verifyPayment(req) {
     };
   }
 
-  const paid = provider.markOrderPaid(order.id, `mock_pay_${order.id.slice(-6)}`);
+  const paid = await provider.markOrderPaid(order.id, `mock_pay_${order.id.slice(-6)}`);
   return {
     order: paid,
     payment: {

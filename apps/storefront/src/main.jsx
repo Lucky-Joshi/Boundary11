@@ -6,6 +6,7 @@ import { App } from './App.jsx';
 import { ToastProvider } from './context/ToastContext.jsx';
 import { AuthProvider } from './context/AuthContext.jsx';
 import { WishlistProvider } from './context/WishlistContext.jsx';
+import { RecentlyViewedProvider } from './context/RecentlyViewedContext.jsx';
 import { CartProvider } from './context/CartContext.jsx';
 import './styles/global.css';
 
@@ -26,9 +27,11 @@ createRoot(document.getElementById('root')).render(
         <ToastProvider>
           <AuthProvider>
             <WishlistProvider>
-              <CartProvider>
-                <App />
-              </CartProvider>
+              <RecentlyViewedProvider>
+                <CartProvider>
+                  <App />
+                </CartProvider>
+              </RecentlyViewedProvider>
             </WishlistProvider>
           </AuthProvider>
         </ToastProvider>

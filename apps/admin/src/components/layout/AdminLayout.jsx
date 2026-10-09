@@ -11,6 +11,7 @@ const NAV = [
   { to: '/orders', label: 'Orders', icon: 'orders' },
   { to: '/customers', label: 'Customers', icon: 'customers' },
   { to: '/discounts', label: 'Discounts', icon: 'discounts' },
+  { to: '/reviews', label: 'Reviews', icon: 'reviews' },
   { to: '/content', label: 'Content', icon: 'content' },
   { to: '/settings', label: 'Settings', icon: 'settings' },
 ];

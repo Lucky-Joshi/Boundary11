@@ -17,6 +17,8 @@ export function AccountOrderDetail() {
   const order = query.data;
   const isCancelled = ['cancelled', 'refunded'].includes(order.status);
   const currentIndex = STATUS_STEPS.indexOf(order.status);
+  const history = order.statusHistory || [];
+  const eventFor = (status) => history.find((entry) => entry.status === status);
 
   return (
     <div className="stack" style={{ gap: 20 }}>
@@ -35,24 +37,48 @@ export function AccountOrderDetail() {
           Progress
         </h3>
         {isCancelled ? (
-          <p className="alert alert-warn">
-            This order is {order.status}. {order.paymentStatus === 'refunded' ? 'A demo refund was recorded.' : ''}
-          </p>
+          <>
+            <p className="alert alert-warn">
+              This order is {order.status}. {order.paymentStatus === 'refunded' ? 'A demo refund was recorded.' : ''}
+            </p>
+            <div className="timeline" style={{ marginTop: 16 }}>
+              {history.map((entry) => (
+                <div key={`${entry.status}-${entry.at}`} className="timeline-item">
+                  <span className="timeline-dot" />
+                  <div>
+                    <strong style={{ textTransform: 'capitalize' }}>{entry.status}</strong>
+                    <p className="muted" style={{ fontSize: '0.82rem' }}>
+                      {new Date(entry.at).toLocaleString('en-IN')}
+                      {entry.note ? ` · ${entry.note}` : ''}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
         ) : (
           <div className="timeline">
-            {STATUS_STEPS.map((step, index) => (
-              <div key={step} className="timeline-item">
-                <span className="timeline-dot" style={{ opacity: index <= currentIndex ? 1 : 0.35 }} />
-                <div>
-                  <strong style={{ textTransform: 'capitalize' }}>{step}</strong>
-                  {index <= currentIndex ? (
-                    <p className="muted" style={{ fontSize: '0.82rem' }}>
-                      Completed
-                    </p>
-                  ) : null}
+            {STATUS_STEPS.map((step, index) => {
+              const event = eventFor(step);
+              return (
+                <div key={step} className="timeline-item">
+                  <span className="timeline-dot" style={{ opacity: index <= currentIndex ? 1 : 0.35 }} />
+                  <div>
+                    <strong style={{ textTransform: 'capitalize' }}>{step}</strong>
+                    {event ? (
+                      <p className="muted" style={{ fontSize: '0.82rem' }}>
+                        {new Date(event.at).toLocaleString('en-IN')}
+                        {event.note ? ` · ${event.note}` : ''}
+                      </p>
+                    ) : index <= currentIndex ? (
+                      <p className="muted" style={{ fontSize: '0.82rem' }}>
+                        Completed
+                      </p>
+                    ) : null}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </section>

@@ -225,6 +225,56 @@ describe('inventory', () => {
   });
 });
 
+describe('taxonomy and admin surface', () => {
+  it('lists collections with product counts', async () => {
+    const res = await request(app).get('/api/v1/collections');
+    expect(res.status).toBe(200);
+    expect(res.body.items.every((c) => typeof c.productCount === 'number')).toBe(true);
+  });
+
+  it('returns a collection with its products', async () => {
+    const res = await request(app).get('/api/v1/collections/matchday');
+    expect(res.status).toBe(200);
+    expect(res.body.products.length).toBeGreaterThan(0);
+  });
+
+  it('lists customers', async () => {
+    const res = await request(app).get('/api/v1/admin/customers').set(auth(adminToken));
+    expect(res.status).toBe(200);
+    expect(res.body.items.length).toBeGreaterThan(0);
+  });
+
+  it('lists discounts and creates a coupon', async () => {
+    const list = await request(app).get('/api/v1/admin/discounts').set(auth(adminToken));
+    expect(list.body.items.length).toBeGreaterThan(0);
+    const code = `TEST${Math.random().toString(36).slice(2, 7).toUpperCase()}`;
+    const res = await request(app)
+      .post('/api/v1/admin/discounts')
+      .set(auth(adminToken))
+      .send({ code, type: 'percent', value: 10, minSubtotalPaise: 100000, active: true });
+    expect(res.status).toBe(201);
+    expect(res.body.code).toBe(code);
+  });
+
+  it('lists banners including inactive ones', async () => {
+    const res = await request(app).get('/api/v1/admin/content/banners').set(auth(adminToken));
+    expect(res.status).toBe(200);
+    expect(res.body.items.some((b) => b.active === false)).toBe(true);
+  });
+
+  it('returns store settings', async () => {
+    const res = await request(app).get('/api/v1/admin/settings').set(auth(adminToken));
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty('storeName');
+  });
+
+  it('returns audit logs', async () => {
+    const res = await request(app).get('/api/v1/admin/audit-logs').set(auth(adminToken));
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body.items)).toBe(true);
+  });
+});
+
 describe('admin staff', () => {
   it('lists staff accounts (not customers)', async () => {
     const res = await request(app).get('/api/v1/admin/staff').set(auth(adminToken));
@@ -313,5 +363,124 @@ describe('checkout and mock payment', () => {
       .set(auth(adminToken))
       .send({ status: 'delivered' });
     expect(res.status).toBe(422);
+  });
+});
+
+describe('product reviews', () => {
+  let reviewId;
+
+  it('starts with an empty published review list', async () => {
+    const res = await request(app).get('/api/v1/products/matchday-home-jersey/reviews');
+    expect(res.status).toBe(200);
+    expect(res.body.items).toHaveLength(0);
+    expect(res.body.summary.count).toBe(0);
+  });
+
+  it('requires a signed-in user to post a review', async () => {
+    const res = await request(app)
+      .post('/api/v1/products/matchday-home-jersey/reviews')
+      .send({ rating: 5, body: 'A fantastic jersey for the price.' });
+    expect(res.status).toBe(401);
+  });
+
+  it('rejects an invalid review payload', async () => {
+    const res = await request(app)
+      .post('/api/v1/products/matchday-home-jersey/reviews')
+      .set(auth(customerToken))
+      .send({ rating: 9, body: 'nope' });
+    expect(res.status).toBe(400);
+  });
+
+  it('creates a review and blends the product rating', async () => {
+    const before = await request(app).get('/api/v1/products/matchday-home-jersey');
+    const res = await request(app)
+      .post('/api/v1/products/matchday-home-jersey/reviews')
+      .set(auth(customerToken))
+      .send({ rating: 5, title: 'Great fit', body: 'Lovely fabric and a true-to-size fit.' });
+    expect(res.status).toBe(201);
+    reviewId = res.body.id;
+
+    const after = await request(app).get('/api/v1/products/matchday-home-jersey/reviews');
+    expect(after.body.items).toHaveLength(1);
+    expect(after.body.reviewCount).toBe(before.body.reviewCount + 1);
+
+    const product = await request(app).get('/api/v1/products/matchday-home-jersey');
+    expect(product.body.reviewCount).toBe(before.body.reviewCount + 1);
+  });
+
+  it('lets an admin moderate a review out of the public list', async () => {
+    const list = await request(app).get('/api/v1/admin/reviews').set(auth(adminToken));
+    expect(list.body.items.some((r) => r.id === reviewId)).toBe(true);
+
+    const res = await request(app)
+      .patch(`/api/v1/admin/reviews/${reviewId}`)
+      .set(auth(adminToken))
+      .send({ status: 'rejected' });
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('rejected');
+
+    const after = await request(app).get('/api/v1/products/matchday-home-jersey/reviews');
+    expect(after.body.items).toHaveLength(0);
+  });
+});
+
+describe('contact and newsletter persistence', () => {
+  it('stores a contact message for staff', async () => {
+    const email = `fan_${Math.random().toString(36).slice(2)}@example.com`;
+    const res = await request(app).post('/api/v1/contact').send({
+      name: 'Test Fan',
+      email,
+      subject: 'Sizing question',
+      message: 'Which size should I order for a 40 inch chest?',
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.received).toBe(true);
+
+    const list = await request(app).get('/api/v1/admin/messages').set(auth(adminToken));
+    const stored = list.body.items.find((m) => m.email === email);
+    expect(stored).toBeTruthy();
+    expect(stored.status).toBe('new');
+
+    const updated = await request(app)
+      .patch(`/api/v1/admin/messages/${stored.id}`)
+      .set(auth(adminToken))
+      .send({ status: 'resolved' });
+    expect(updated.status).toBe(200);
+    expect(updated.body.status).toBe('resolved');
+  });
+
+  it('subscribes to the newsletter idempotently', async () => {
+    const email = `news_${Math.random().toString(36).slice(2)}@example.com`;
+    const first = await request(app).post('/api/v1/newsletter').send({ email });
+    expect(first.status).toBe(201);
+    expect(first.body.already).toBe(false);
+
+    const second = await request(app).post('/api/v1/newsletter').send({ email });
+    expect(second.status).toBe(200);
+    expect(second.body.already).toBe(true);
+
+    const list = await request(app).get('/api/v1/admin/subscribers').set(auth(adminToken));
+    expect(list.body.items.some((s) => s.email === email.toLowerCase())).toBe(true);
+  });
+});
+
+describe('admin CSV exports', () => {
+  it('exports orders as a CSV attachment', async () => {
+    const res = await request(app).get('/api/v1/admin/exports/orders').set(auth(adminToken));
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toContain('text/csv');
+    expect(res.headers['content-disposition']).toContain('boundary11-orders.csv');
+    expect(res.text.split('\n')[0]).toContain('Order');
+  });
+
+  it('exports inventory as CSV', async () => {
+    const res = await request(app).get('/api/v1/admin/exports/inventory').set(auth(adminToken));
+    expect(res.status).toBe(200);
+    expect(res.text.split('\n')[0]).toContain('SKU');
+  });
+
+  it('404s on an unknown export kind', async () => {
+    const res = await request(app).get('/api/v1/admin/exports/nonsense').set(auth(adminToken));
+    expect(res.status).toBe(404);
   });
 });

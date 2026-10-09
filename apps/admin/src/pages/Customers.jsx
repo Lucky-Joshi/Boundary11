@@ -2,6 +2,7 @@ import { useCustomers } from '../hooks/useAdminQueries.js';
 import { Money } from '../components/ui/Money.jsx';
 import { StatusBadge } from '../components/ui/StatusBadge.jsx';
 import { ErrorState, TableSkeleton, EmptyState } from '../components/ui/States.jsx';
+import { ExportButton } from '../components/ui/ExportButton.jsx';
 
 export function Customers() {
   const { data, isLoading, isError, error, refetch } = useCustomers();
@@ -13,6 +14,7 @@ export function Customers() {
           <h2>Customers</h2>
           <p>Accounts and order history derived from placed orders.</p>
         </div>
+        <ExportButton kind="customers" />
       </div>
 
       {isLoading ? (

@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as catalog from '../services/catalog.js';
 
 export function useProducts(params) {
@@ -46,5 +46,32 @@ export function useCollection(slug) {
     queryKey: ['collection', slug],
     queryFn: () => catalog.fetchCollection(slug),
     enabled: Boolean(slug),
+  });
+}
+
+export function useBanners() {
+  return useQuery({
+    queryKey: ['banners'],
+    queryFn: catalog.fetchBanners,
+    staleTime: 5 * 60_000,
+  });
+}
+
+export function useProductReviews(slug) {
+  return useQuery({
+    queryKey: ['product', slug, 'reviews'],
+    queryFn: () => catalog.fetchProductReviews(slug),
+    enabled: Boolean(slug),
+  });
+}
+
+export function useCreateReview(slug) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload) => catalog.createProductReview(slug, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['product', slug, 'reviews'] });
+      queryClient.invalidateQueries({ queryKey: ['product', slug] });
+    },
   });
 }

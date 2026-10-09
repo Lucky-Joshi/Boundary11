@@ -15,13 +15,13 @@ import { getProvider } from '../../providers/index.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { slugify } from '../../utils/ids.js';
 
-function categoryMap() {
+async function categoryMap() {
   const map = new Map();
-  for (const category of getProvider().listCategories()) map.set(category.slug, category.name);
+  for (const category of await getProvider().listCategories()) map.set(category.slug, category.name);
   return map;
 }
 
-export function serializeProduct(product, names = categoryMap()) {
+export function serializeProduct(product, names = new Map()) {
   const range = getProductPriceRange(product);
   const compare = getProductCompareAtRange(product);
   return {
@@ -45,10 +45,10 @@ function toArray(value) {
   return Array.isArray(value) ? value : String(value).split(',').map((v) => v.trim()).filter(Boolean);
 }
 
-export function listProducts(query = {}, { includeUnpublished = false } = {}) {
+export async function listProducts(query = {}, { includeUnpublished = false } = {}) {
   const provider = getProvider();
-  const all = provider.listProducts({ includeUnpublished });
-  const names = categoryMap();
+  const all = await provider.listProducts({ includeUnpublished });
+  const names = await categoryMap();
 
   const filtered = filterProducts(all, {
     q: query.q,
@@ -70,25 +70,24 @@ export function listProducts(query = {}, { includeUnpublished = false } = {}) {
   };
 }
 
-export function getProductBySlug(slug) {
-  const product = getProvider().getProductBySlug(slug);
+export async function getProductBySlug(slug) {
+  const product = await getProvider().getProductBySlug(slug);
   if (!product) throw ApiError.notFound('Product not found.');
-  return serializeProduct(product);
+  return serializeProduct(product, await categoryMap());
 }
 
-export function getProductById(id) {
-  const product = getProvider().getProductById(id);
+export async function getProductById(id) {
+  const product = await getProvider().getProductById(id);
   if (!product) throw ApiError.notFound('Product not found.');
-  return serializeProduct(product);
+  return serializeProduct(product, await categoryMap());
 }
 
-export function getRelatedProducts(slug, limit = 4) {
+export async function getRelatedProducts(slug, limit = 4) {
   const provider = getProvider();
-  const product = provider.getProductBySlug(slug);
+  const product = await provider.getProductBySlug(slug);
   if (!product) return [];
-  const names = categoryMap();
-  const pool = provider
-    .listProducts()
+  const names = await categoryMap();
+  const pool = (await provider.listProducts())
     .filter((p) => p.slug !== slug)
     .map((p) => ({ product: p, score: (p.categorySlug === product.categorySlug ? 2 : 0) + (p.collections || []).filter((c) => (product.collections || []).includes(c)).length }));
   return pool
@@ -97,26 +96,26 @@ export function getRelatedProducts(slug, limit = 4) {
     .map(({ product: p }) => serializeProduct(p, names));
 }
 
-export function createProduct(input, actor) {
+export async function createProduct(input, actor) {
   const payload = { ...input, slug: input.slug || slugify(input.name), _actor: actor };
-  const created = getProvider().createProduct(payload);
-  return serializeProduct(created);
+  const created = await getProvider().createProduct(payload);
+  return serializeProduct(created, await categoryMap());
 }
 
-export function updateProduct(id, input, actor) {
-  const updated = getProvider().updateProduct(id, { ...input, _actor: actor });
+export async function updateProduct(id, input, actor) {
+  const updated = await getProvider().updateProduct(id, { ...input, _actor: actor });
   if (!updated) throw ApiError.notFound('Product not found.');
-  return serializeProduct(updated);
+  return serializeProduct(updated, await categoryMap());
 }
 
-export function setProductStatus(id, status, actor) {
-  const updated = getProvider().setProductStatus(id, status, actor);
+export async function setProductStatus(id, status, actor) {
+  const updated = await getProvider().setProductStatus(id, status, actor);
   if (!updated) throw ApiError.notFound('Product not found.');
-  return serializeProduct(updated);
+  return serializeProduct(updated, await categoryMap());
 }
 
-export function archiveProduct(id, actor) {
-  const updated = getProvider().archiveProduct(id, actor);
+export async function archiveProduct(id, actor) {
+  const updated = await getProvider().archiveProduct(id, actor);
   if (!updated) throw ApiError.notFound('Product not found.');
   return { id: updated.id, status: updated.status };
 }

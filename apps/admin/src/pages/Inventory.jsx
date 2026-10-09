@@ -7,6 +7,7 @@ import { useToast } from '../context/ToastContext.jsx';
 import { StatusBadge } from '../components/ui/StatusBadge.jsx';
 import { Spinner, ErrorState, TableSkeleton, EmptyState } from '../components/ui/States.jsx';
 import { Modal } from '../components/ui/Modal.jsx';
+import { ExportButton } from '../components/ui/ExportButton.jsx';
 import { Link } from 'react-router-dom';
 
 function StockBadge({ row }) {
@@ -76,10 +77,13 @@ export function Inventory() {
             {inventory.data.length} variants · {lowCount} need attention
           </p>
         </div>
-        <label className="btn btn-outline btn-sm" style={{ gap: 8 }}>
-          <input type="checkbox" checked={lowOnly} onChange={toggleLow} />
-          Low stock only
-        </label>
+        <div className="row wrap">
+          <ExportButton kind="inventory" />
+          <label className="btn btn-outline btn-sm" style={{ gap: 8 }}>
+            <input type="checkbox" checked={lowOnly} onChange={toggleLow} />
+            Low stock only
+          </label>
+        </div>
       </div>
 
       {inventory.isError ? null : inventory.data.length === 0 ? (

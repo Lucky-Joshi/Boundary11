@@ -15,6 +15,9 @@ export const keys = {
   banners: ['admin', 'banners'],
   settings: ['admin', 'settings'],
   audit: ['admin', 'audit'],
+  reviews: (status) => ['admin', 'reviews', { status }],
+  messages: ['admin', 'messages'],
+  subscribers: ['admin', 'subscribers'],
 };
 
 export function useAnalytics() {
@@ -67,6 +70,18 @@ export function useSettings() {
 
 export function useAuditLogs() {
   return useQuery({ queryKey: keys.audit, queryFn: adminApi.listAuditLogs });
+}
+
+export function useReviews(status) {
+  return useQuery({ queryKey: keys.reviews(status), queryFn: () => adminApi.listReviews(status) });
+}
+
+export function useMessages() {
+  return useQuery({ queryKey: keys.messages, queryFn: adminApi.listMessages });
+}
+
+export function useSubscribers() {
+  return useQuery({ queryKey: keys.subscribers, queryFn: adminApi.listSubscribers });
 }
 
 /** Generic mutation helper that invalidates the given query keys on success. */

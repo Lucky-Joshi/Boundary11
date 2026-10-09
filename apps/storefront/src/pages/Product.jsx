@@ -1,15 +1,17 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { Money } from '../components/ui/Money.jsx';
 import { StarRating } from '../components/products/StarRating.jsx';
 import { ProductArtwork } from '../components/products/ProductArtwork.jsx';
 import { ProductGrid } from '../components/products/ProductGrid.jsx';
+import { ProductReviews } from '../components/products/ProductReviews.jsx';
 import { QuantityStepper } from '../components/cart/QuantityStepper.jsx';
 import { Spinner } from '../components/ui/Skeleton.jsx';
 import { ErrorState } from '../components/ui/States.jsx';
 import { useProduct, useRelatedProducts } from '../hooks/useCatalog.js';
 import { useCart } from '../context/CartContext.jsx';
 import { useWishlist } from '../context/WishlistContext.jsx';
+import { useRecentlyViewed } from '../context/RecentlyViewedContext.jsx';
 import { HeartIcon, TruckIcon, RefreshIcon, ShieldIcon } from '../components/ui/Icons.jsx';
 
 export function Product() {
@@ -18,6 +20,9 @@ export function Product() {
   const relatedQuery = useRelatedProducts(slug);
   const cart = useCart();
   const wishlist = useWishlist();
+  const recentlyViewed = useRecentlyViewed();
+  const addRecent = useRef(recentlyViewed.add);
+  addRecent.current = recentlyViewed.add;
 
   const [selectedSize, setSelectedSize] = useState(null);
   const [selectedColor, setSelectedColor] = useState(null);
@@ -33,6 +38,7 @@ export function Product() {
     setSelectedSize(firstAvailable.size);
     setSelectedColor(firstAvailable.color);
     setQuantity(1);
+    addRecent.current(product);
   }, [product]);
 
   const sizes = useMemo(() => {
@@ -229,6 +235,7 @@ export function Product() {
             { id: 'description', label: 'Description' },
             { id: 'specs', label: 'Specifications' },
             { id: 'shipping', label: 'Shipping & returns' },
+            { id: 'reviews', label: `Reviews (${product.reviewCount || 0})` },
           ].map((item) => (
             <button
               key={item.id}
@@ -284,6 +291,12 @@ export function Product() {
             </>
           ) : null}
         </div>
+
+        {tab === 'reviews' ? (
+          <div style={{ marginTop: 24 }}>
+            <ProductReviews slug={product.slug} />
+          </div>
+        ) : null}
       </section>
 
       {/* Related */}

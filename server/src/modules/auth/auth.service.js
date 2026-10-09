@@ -10,21 +10,21 @@ function issue(account) {
   };
 }
 
-export function login({ email, password }) {
+export async function login({ email, password }) {
   const provider = getProvider();
-  const result = provider.authenticate(email, password);
+  const result = await provider.authenticate(email, password);
   if (!result) throw ApiError.unauthorized('Incorrect email or password.');
   if (result.disabled) throw ApiError.forbidden('This account has been disabled.');
   return issue(result.account);
 }
 
-export function register(input) {
-  const account = getProvider().register(input);
+export async function register(input) {
+  const account = await getProvider().register(input);
   return issue(account);
 }
 
-export function me(req) {
-  const account = getProvider().getAccountById(req.user.id);
+export async function me(req) {
+  const account = await getProvider().getAccountById(req.user.id);
   if (!account) throw ApiError.notFound('Account not found.');
   return { id: account.id, email: account.email, fullName: account.fullName, role: account.role, createdAt: account.createdAt };
 }

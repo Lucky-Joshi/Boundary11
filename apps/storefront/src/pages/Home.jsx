@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
-import { useProducts, useCategories, useCollections } from '../hooks/useCatalog.js';
+import { useProducts, useCategories, useCollections, useBanners } from '../hooks/useCatalog.js';
+import { useRecentlyViewed } from '../context/RecentlyViewedContext.jsx';
 import { ProductGrid } from '../components/products/ProductGrid.jsx';
 import { ProductGridSkeleton } from '../components/ui/Skeleton.jsx';
 import { ErrorState } from '../components/ui/States.jsx';
@@ -17,27 +18,33 @@ const CATEGORY_ACCENTS = {
 export function Home() {
   const categories = useCategories();
   const collections = useCollections();
+  const banners = useBanners();
+  const recentlyViewed = useRecentlyViewed();
   const bestsellers = useProducts({ sort: 'popularity', pageSize: 4 });
+  const featured = useProducts({ sort: 'featured', pageSize: 12 });
   const newArrivals = useProducts({ sort: 'newest', pageSize: 8 });
+
+  const hero = banners.data?.items?.[0] || null;
+  const featuredItems = (featured.data?.items || []).filter((product) => product.featured).slice(0, 4);
 
   return (
     <>
       {/* Hero */}
       <section className="container">
-        <div className="hero">
+        <div className="hero" style={hero?.accent ? { background: `linear-gradient(135deg, ${hero.accent}, #0b1220)` } : undefined}>
           <div className="hero-inner">
             <div>
               <span className="eyebrow">Original cricket merchandise</span>
               <h1 className="display" style={{ marginTop: 14 }}>
-                Gear up for every innings.
+                {hero?.title || 'Gear up for every innings.'}
               </h1>
               <p>
-                Jerseys, training kit and fan essentials built for the long season. Designed in-house,
-                made to be worn hard and washed harder.
+                {hero?.subtitle ||
+                  'Jerseys, training kit and fan essentials built for the long season. Designed in-house, made to be worn hard and washed harder.'}
               </p>
               <div className="hero-actions">
-                <Link to="/shop" className="btn btn-accent btn-lg">
-                  Shop the collection
+                <Link to={hero?.ctaHref || '/shop'} className="btn btn-accent btn-lg">
+                  {hero?.ctaLabel || 'Shop the collection'}
                 </Link>
                 <Link to="/collections/new-season" className="btn btn-outline btn-lg" style={{ color: '#fff', borderColor: 'rgba(255,255,255,.4)' }}>
                   See what&rsquo;s new
@@ -125,6 +132,24 @@ export function Home() {
         )}
       </section>
 
+      {/* Featured rail */}
+      {featuredItems.length > 0 ? (
+        <section className="container section-tight">
+          <div className="section-head">
+            <div>
+              <span className="eyebrow">Handpicked</span>
+              <h2 className="h2" style={{ marginTop: 8 }}>
+                Featured kit
+              </h2>
+            </div>
+            <Link to="/shop" className="row muted" style={{ fontWeight: 600 }}>
+              Shop all <ArrowRightIcon size={16} />
+            </Link>
+          </div>
+          <ProductGrid products={featuredItems} />
+        </section>
+      ) : null}
+
       {/* Collections promo */}
       <section className="container section-tight">
         <div className="grid" style={{ gridTemplateColumns: '1fr 1fr' }}>
@@ -176,6 +201,21 @@ export function Home() {
           <ProductGrid products={newArrivals.data.items} />
         )}
       </section>
+
+      {/* Recently viewed */}
+      {recentlyViewed.items.length > 0 ? (
+        <section className="container section-tight">
+          <div className="section-head">
+            <div>
+              <span className="eyebrow">Pick up where you left off</span>
+              <h2 className="h2" style={{ marginTop: 8 }}>
+                Recently viewed
+              </h2>
+            </div>
+          </div>
+          <ProductGrid products={recentlyViewed.items} />
+        </section>
+      ) : null}
 
       {/* Brand story */}
       <section className="container section-tight">

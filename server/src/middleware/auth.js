@@ -7,14 +7,15 @@ import { getProvider } from '../providers/index.js';
  * The account is re-read from the provider so role changes and disabled
  * accounts take effect on the next request.
  */
-export function authenticate(req, _res, next) {
+export async function authenticate(req, _res, next) {
   req.user = null;
   const header = req.headers.authorization || '';
   const token = header.startsWith('Bearer ') ? header.slice(7).trim() : null;
-  if (token) {
+  if (!token) return next();
+  try {
     const payload = verifyToken(token);
     if (payload?.sub) {
-      const account = getProvider().getAccountById(payload.sub);
+      const account = await getProvider().getAccountById(payload.sub);
       if (account && account.status === 'active') {
         req.user = {
           id: account.id,
@@ -24,8 +25,10 @@ export function authenticate(req, _res, next) {
         };
       }
     }
+    return next();
+  } catch (error) {
+    return next(error);
   }
-  next();
 }
 
 export function requireAuth(req, _res, next) {

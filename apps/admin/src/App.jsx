@@ -11,6 +11,7 @@ import { Orders } from './pages/Orders.jsx';
 import { OrderDetail } from './pages/OrderDetail.jsx';
 import { Customers } from './pages/Customers.jsx';
 import { Discounts } from './pages/Discounts.jsx';
+import { Reviews } from './pages/Reviews.jsx';
 import { Content } from './pages/Content.jsx';
 import { Settings } from './pages/Settings.jsx';
 
@@ -37,6 +38,7 @@ export function App() {
         <Route path="orders/:id" element={<OrderDetail />} />
         <Route path="customers" element={<Customers />} />
         <Route path="discounts" element={<Discounts />} />
+        <Route path="reviews" element={<Reviews />} />
         <Route path="content" element={<Content />} />
         <Route path="settings" element={<Settings />} />
       </Route>

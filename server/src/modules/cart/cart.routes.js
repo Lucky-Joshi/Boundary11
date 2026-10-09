@@ -6,32 +6,32 @@ import * as service from './cart.service.js';
 
 const router = Router();
 
-router.get('/', asyncHandler((req, res) => {
-  res.json(service.getCart(req));
+router.get('/', asyncHandler(async (req, res) => {
+  res.json(await service.getCart(req));
 }));
 
 router.post(
   '/items',
   validate({ body: cartItemInputSchema }),
-  asyncHandler((req, res) => {
-    res.status(201).json(service.addItem(req));
+  asyncHandler(async (req, res) => {
+    res.status(201).json(await service.addItem(req));
   }),
 );
 
 router.patch(
   '/items/:itemId',
   validate({ body: cartItemUpdateSchema }),
-  asyncHandler((req, res) => {
-    res.json(service.updateItem(req));
+  asyncHandler(async (req, res) => {
+    res.json(await service.updateItem(req));
   }),
 );
 
-router.delete('/items/:itemId', asyncHandler((req, res) => {
-  res.json(service.removeItem(req));
+router.delete('/items/:itemId', asyncHandler(async (req, res) => {
+  res.json(await service.removeItem(req));
 }));
 
-router.delete('/', asyncHandler((req, res) => {
-  res.json(service.clearCart(req));
+router.delete('/', asyncHandler(async (req, res) => {
+  res.json(await service.clearCart(req));
 }));
 
 export default router;

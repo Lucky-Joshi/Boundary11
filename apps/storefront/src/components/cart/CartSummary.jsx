@@ -4,7 +4,7 @@ import { Money } from '../ui/Money.jsx';
 import { useCart } from '../../context/CartContext.jsx';
 
 export function CouponForm() {
-  const { coupon, setCoupon, appliedCoupon } = useCart();
+  const { coupon, setCoupon, appliedCoupon, totals } = useCart();
   const [value, setValue] = useState(coupon || '');
 
   return (
@@ -32,12 +32,23 @@ export function CouponForm() {
         </button>
       </form>
       {appliedCoupon ? (
-        <p className="field-hint" style={{ marginTop: 6 }}>
+        <p className="field-hint row-between" style={{ marginTop: 8 }}>
           <span className="badge badge-green">Applied {appliedCoupon.code}</span>
+          <button
+            type="button"
+            className="link-btn"
+            style={{ color: 'var(--red)' }}
+            onClick={() => {
+              setValue('');
+              setCoupon('');
+            }}
+          >
+            Remove
+          </button>
         </p>
       ) : value && coupon ? (
-        <p className="field-error" style={{ marginTop: 6 }}>
-          Coupon not valid for this order.
+        <p className="field-error" style={{ marginTop: 8 }}>
+          {totals?.couponReason || 'Coupon not valid for this order.'}
         </p>
       ) : null}
     </div>

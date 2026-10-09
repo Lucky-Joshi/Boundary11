@@ -15,6 +15,10 @@ const TONES = {
   admin: 'badge-navy',
   support: 'badge-blue',
   customer: 'badge',
+  rejected: 'badge-red',
+  new: 'badge-amber',
+  read: 'badge-blue',
+  resolved: 'badge-green',
 };
 
 export function StatusBadge({ value }) {

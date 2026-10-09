@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { ROLES, PRODUCT_STATUS, SIZES, INVENTORY_REASONS } from '../constants/index.js';
+import { ROLES, PRODUCT_STATUS, SIZES, INVENTORY_REASONS, REVIEW_STATUS, CONTACT_STATUS } from '../constants/index.js';
 
 /** Reusable field primitives. */
 const email = z.string().trim().toLowerCase().email('Enter a valid email address.');
@@ -135,6 +135,20 @@ export const contactSchema = z.object({
 
 export const newsletterSchema = z.object({
   email,
+});
+
+export const reviewInputSchema = z.object({
+  rating: z.number().int().min(1, 'Choose a rating.').max(5, 'Rating must be between 1 and 5.'),
+  title: z.string().trim().max(80).optional().default(''),
+  body: z.string().trim().min(10, 'Review should be at least 10 characters.').max(1000),
+});
+
+export const reviewModerationSchema = z.object({
+  status: z.enum(Object.values(REVIEW_STATUS)),
+});
+
+export const contactMessageUpdateSchema = z.object({
+  status: z.enum(Object.values(CONTACT_STATUS)),
 });
 
 export const roleSchema = z.enum(Object.values(ROLES));

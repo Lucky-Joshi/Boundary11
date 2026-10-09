@@ -14,9 +14,9 @@ export function resolveCartId(req, { create = false } = {}) {
   return String(id);
 }
 
-function attachTotals(cart, couponCode) {
+async function attachTotals(cart, couponCode) {
   const provider = getProvider();
-  const coupon = couponCode ? provider.getCouponByCode(couponCode) : null;
+  const coupon = couponCode ? await provider.getCouponByCode(couponCode) : null;
   const usable = coupon && coupon.active ? coupon : null;
   const totals = computeTotals(
     cart.items.map((i) => ({ unitPrice: i.unitPrice, quantity: i.quantity })),
@@ -29,33 +29,33 @@ function attachTotals(cart, couponCode) {
   };
 }
 
-export function getCart(req) {
+export async function getCart(req) {
   const cartId = resolveCartId(req, { create: true });
-  const cart = getProvider().getCart(cartId);
-  return { cartId, ...attachTotals(cart, req.query?.coupon) };
+  const cart = await getProvider().getCart(cartId);
+  return { cartId, ...(await attachTotals(cart, req.query?.coupon)) };
 }
 
-export function addItem(req) {
+export async function addItem(req) {
   const cartId = resolveCartId(req, { create: true });
   const { variantId, quantity } = req.body;
-  const cart = getProvider().addCartItem(cartId, variantId, quantity);
-  return { cartId, ...attachTotals(cart) };
+  const cart = await getProvider().addCartItem(cartId, variantId, quantity);
+  return { cartId, ...(await attachTotals(cart)) };
 }
 
-export function updateItem(req) {
+export async function updateItem(req) {
   const cartId = resolveCartId(req);
-  const cart = getProvider().updateCartItem(cartId, req.params.itemId, req.body.quantity);
-  return { cartId, ...attachTotals(cart) };
+  const cart = await getProvider().updateCartItem(cartId, req.params.itemId, req.body.quantity);
+  return { cartId, ...(await attachTotals(cart)) };
 }
 
-export function removeItem(req) {
+export async function removeItem(req) {
   const cartId = resolveCartId(req);
-  const cart = getProvider().removeCartItem(cartId, req.params.itemId);
-  return { cartId, ...attachTotals(cart) };
+  const cart = await getProvider().removeCartItem(cartId, req.params.itemId);
+  return { cartId, ...(await attachTotals(cart)) };
 }
 
-export function clearCart(req) {
+export async function clearCart(req) {
   const cartId = resolveCartId(req);
-  const cart = getProvider().clearCart(cartId);
-  return { cartId, ...attachTotals(cart) };
+  const cart = await getProvider().clearCart(cartId);
+  return { cartId, ...(await attachTotals(cart)) };
 }

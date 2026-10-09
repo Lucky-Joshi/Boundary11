@@ -4,6 +4,7 @@ import { useOrders } from '../hooks/useAdminQueries.js';
 import { Money } from '../components/ui/Money.jsx';
 import { StatusBadge } from '../components/ui/StatusBadge.jsx';
 import { ErrorState, TableSkeleton, EmptyState } from '../components/ui/States.jsx';
+import { ExportButton } from '../components/ui/ExportButton.jsx';
 
 const STATUSES = ['pending', 'paid', 'processing', 'shipped', 'delivered', 'cancelled', 'refunded'];
 
@@ -30,6 +31,7 @@ export function Orders() {
           <p>{isLoading ? 'Loading…' : `${data.items.length} order(s)`}</p>
         </div>
         <div className="row wrap">
+          <ExportButton kind="orders" />
           <input
             className="input"
             placeholder="Search #order, email…"

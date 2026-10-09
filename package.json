@@ -1,0 +1,31 @@
+{
+  "name": "boundary11",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Boundary11 - an original cricket-inspired sports merchandise e-commerce platform (prototype).",
+  "type": "module",
+  "workspaces": [
+    "apps/storefront",
+    "apps/admin",
+    "server",
+    "packages/shared"
+  ],
+  "scripts": {
+    "dev": "concurrently -n api,store,admin -c blue,green,magenta \"npm:dev:api\" \"npm:dev:store\" \"npm:dev:admin\"",
+    "dev:api": "npm run dev -w @boundary11/server",
+    "dev:store": "npm run dev -w @boundary11/storefront",
+    "dev:admin": "npm run dev -w @boundary11/admin",
+    "build": "npm run build -w @boundary11/storefront && npm run build -w @boundary11/admin",
+    "test": "npm run test -w @boundary11/shared && npm run test -w @boundary11/server && npm run test -w @boundary11/storefront && npm run test -w @boundary11/admin",
+    "test:shared": "npm run test -w @boundary11/shared",
+    "test:server": "npm run test -w @boundary11/server",
+    "test:store": "npm run test -w @boundary11/storefront",
+    "test:admin": "npm run test -w @boundary11/admin"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

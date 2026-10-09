@@ -1,0 +1,25 @@
+{
+  "name": "@boundary11/shared",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./index.js",
+  "exports": {
+    ".": "./index.js",
+    "./constants": "./constants/index.js",
+    "./money": "./money/index.js",
+    "./validation": "./validation/index.js",
+    "./catalog": "./catalog/index.js",
+    "./cart": "./cart/index.js"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "vitest": "^2.1.8"
+  }
+}

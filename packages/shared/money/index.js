@@ -69,7 +69,7 @@ export function computeCouponDiscount(subtotalPaise, coupon) {
   }
   let discount = 0;
   if (coupon.type === 'percent') {
-    discount = applyPercentDiscount(subtotalPaise, coupon.value);
+    discount = Math.round((subtotalPaise * coupon.value) / 100);
     if (coupon.maxDiscountPaise) {
       discount = Math.min(discount, coupon.maxDiscountPaise);
     }

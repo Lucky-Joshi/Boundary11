@@ -8,7 +8,7 @@ import { useInvalidatingMutation, keys } from '../hooks/useAdminQueries.js';
 import { Money } from '../components/ui/Money.jsx';
 import { StatusBadge } from '../components/ui/StatusBadge.jsx';
 import { Icon } from '../components/ui/Icons.jsx';
-import { Spinner, ErrorState, TableSkeleton, EmptyState } from '../components/ui/States.jsx';
+import { ErrorState, TableSkeleton, EmptyState } from '../components/ui/States.jsx';
 import { Modal } from '../components/ui/Modal.jsx';
 
 const STATUSES = Object.values(PRODUCT_STATUS);

@@ -1,9 +1,9 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useOrders } from '../hooks/useAdminQueries.js';
 import { Money } from '../components/ui/Money.jsx';
 import { StatusBadge } from '../components/ui/StatusBadge.jsx';
-import { Spinner, ErrorState, TableSkeleton, EmptyState } from '../components/ui/States.jsx';
+import { ErrorState, TableSkeleton, EmptyState } from '../components/ui/States.jsx';
 
 const STATUSES = ['pending', 'paid', 'processing', 'shipped', 'delivered', 'cancelled', 'refunded'];
 

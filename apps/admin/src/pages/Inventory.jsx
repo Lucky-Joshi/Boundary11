@@ -5,7 +5,6 @@ import { adminApi } from '../services/adminApi.js';
 import { useInvalidatingMutation, useInventory, useMovements, keys } from '../hooks/useAdminQueries.js';
 import { useToast } from '../context/ToastContext.jsx';
 import { StatusBadge } from '../components/ui/StatusBadge.jsx';
-import { Icon } from '../components/ui/Icons.jsx';
 import { Spinner, ErrorState, TableSkeleton, EmptyState } from '../components/ui/States.jsx';
 import { Modal } from '../components/ui/Modal.jsx';
 import { Link } from 'react-router-dom';

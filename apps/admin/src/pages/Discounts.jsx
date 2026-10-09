@@ -6,7 +6,7 @@ import { useDiscounts, useInvalidatingMutation } from '../hooks/useAdminQueries.
 import { useToast } from '../context/ToastContext.jsx';
 import { StatusBadge } from '../components/ui/StatusBadge.jsx';
 import { Money } from '../components/ui/Money.jsx';
-import { Spinner, ErrorState, TableSkeleton, EmptyState } from '../components/ui/States.jsx';
+import { ErrorState, TableSkeleton, EmptyState } from '../components/ui/States.jsx';
 
 const EMPTY = { code: '', type: 'percent', valueRupees: '', minSubtotalRupees: '', maxDiscountRupees: '', usageLimit: '' };
 

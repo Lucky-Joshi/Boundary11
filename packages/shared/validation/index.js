@@ -9,7 +9,6 @@ const phone = z
   .trim()
   .regex(/^[+]?[0-9\s-]{8,15}$/, 'Enter a valid phone number.');
 const paise = z.number().int().nonnegative('Amount must be zero or more paise.');
-const nonEmptyString = z.string().trim().min(1, 'This field is required.');
 
 export const addressSchema = z.object({
   fullName: name,

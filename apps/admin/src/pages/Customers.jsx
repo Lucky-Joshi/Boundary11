@@ -1,7 +1,7 @@
 import { useCustomers } from '../hooks/useAdminQueries.js';
 import { Money } from '../components/ui/Money.jsx';
 import { StatusBadge } from '../components/ui/StatusBadge.jsx';
-import { Spinner, ErrorState, TableSkeleton, EmptyState } from '../components/ui/States.jsx';
+import { ErrorState, TableSkeleton, EmptyState } from '../components/ui/States.jsx';
 
 export function Customers() {
   const { data, isLoading, isError, error, refetch } = useCustomers();

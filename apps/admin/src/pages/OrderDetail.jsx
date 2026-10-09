@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
-import { canTransitionOrderStatus, ORDER_STATUS_TRANSITIONS } from '@boundary11/shared';
+import { useNavigate, useParams } from 'react-router-dom';
+import { ORDER_STATUS_TRANSITIONS } from '@boundary11/shared';
 import { adminApi } from '../services/adminApi.js';
 import { useInvalidatingMutation, useOrder, keys } from '../hooks/useAdminQueries.js';
 import { useToast } from '../context/ToastContext.jsx';

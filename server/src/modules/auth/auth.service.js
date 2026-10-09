@@ -1,30 +1,23 @@
-import { getProvider } from '../../providers/index.js';
+import { getAuthProvider } from '../../auth/index.js';
 import { ApiError } from '../../utils/ApiError.js';
-import { signToken } from '../../utils/token.js';
 
-function issue(account) {
-  const token = signToken({ sub: account.id, role: account.role });
-  return {
-    token,
-    user: { id: account.id, email: account.email, fullName: account.fullName, role: account.role },
-  };
-}
-
-export async function login({ email, password }) {
-  const provider = getProvider();
-  const result = await provider.authenticate(email, password);
-  if (!result) throw ApiError.unauthorized('Incorrect email or password.');
-  if (result.disabled) throw ApiError.forbidden('This account has been disabled.');
-  return issue(result.account);
+export async function login(body) {
+  return getAuthProvider().login(body);
 }
 
 export async function register(input) {
-  const account = await getProvider().register(input);
-  return issue(account);
+  return getAuthProvider().register(input);
+}
+
+export async function logout(req) {
+  const header = req.headers.authorization || '';
+  const token = header.startsWith('Bearer ') ? header.slice(7).trim() : null;
+  const revoked = token ? await getAuthProvider().revokeSession(token) : false;
+  return { revoked };
 }
 
 export async function me(req) {
-  const account = await getProvider().getAccountById(req.user.id);
-  if (!account) throw ApiError.notFound('Account not found.');
-  return { id: account.id, email: account.email, fullName: account.fullName, role: account.role, createdAt: account.createdAt };
+  const account = await getAuthProvider().resolveSession(req.token);
+  if (!account || !account.user) throw ApiError.unauthorized();
+  return account.user;
 }

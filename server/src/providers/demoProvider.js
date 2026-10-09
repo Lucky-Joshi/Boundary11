@@ -8,6 +8,7 @@ import {
   demoAccounts,
 } from '../data/demoData.js';
 import { generateId, generateOrderNumber, slugify, nowISO } from '../utils/ids.js';
+import { hashPassword, verifyPassword } from '../utils/password.js';
 import { ApiError } from '../utils/ApiError.js';
 import {
   computeTotals,
@@ -23,15 +24,27 @@ function daysAgo(n) {
 }
 
 /**
- * In-memory demo provider.
+ * Local adapter (prototype).
  *
- * NOTE: This is prototype persistence only. State lives in process memory and
- * resets on restart. It is isolated behind a small repository-style interface
- * so a Supabase-backed provider can replace it without touching the services.
+ * `createDemoProvider()` builds an in-memory provider used by the test suite.
+ * `createLocalProvider()` wraps the same implementation with a durable
+ * file-backed store (`storage`) so development data survives restarts.
+ *
+ * When a `storage` adapter is provided, every mutation is serialised and
+ * written to disk, and a fresh instance hydrates from the saved snapshot
+ * instead of re-seeding. This gives predictable persistence for local
+ * development while keeping the repository interface identical to the
+ * Supabase provider.
+ *
+ * Documented limitations of the durable local adapter:
+ *  - Single-file snapshot, not a relational database.
+ *  - No multi-process locking / no transactional rollback.
+ *  - Concurrency guarantees match the single-threaded Node event loop only;
+ *    the Supabase provider is the path to real atomicity (see migrations).
  */
-export function createDemoProvider() {
+export function createDemoProvider({ storage = null, mode = 'demo' } = {}) {
   const state = {
-    mode: 'demo',
+    mode,
     categories: clone(seedCategories),
     collections: clone(seedCollections),
     products: clone(seedProducts),
@@ -40,6 +53,7 @@ export function createDemoProvider() {
     settings: clone(seedSettings),
     accounts: clone(demoAccounts).map(({ password: _pw, ...rest }) => ({ ...rest, id: rest.id })),
     cart: new Map(),
+    idempotency: new Map(),
     orders: [],
     inventoryMovements: [],
     auditLogs: [],
@@ -48,8 +62,9 @@ export function createDemoProvider() {
     newsletterSubscribers: [],
   };
 
-  // credential store kept separate from the public account objects
-  const credentials = new Map(clone(demoAccounts).map((a) => [a.id, a.password]));
+  // credential store kept separate from the public account objects; scrypt
+  // hashes only are persisted, never plaintext passwords.
+  let credentials = new Map(clone(demoAccounts).map((a) => [a.id, hashPassword(a.password)]));
 
   function findProduct(productId) {
     return state.products.find((p) => p.id === productId);
@@ -91,6 +106,34 @@ export function createDemoProvider() {
     };
     state.auditLogs.unshift(entry);
     return entry;
+  }
+
+  // Serialisable snapshot + durable persistence (used by the local adapter).
+  function serialize() {
+    return {
+      version: 1,
+      mode: state.mode,
+      categories: state.categories,
+      collections: state.collections,
+      products: state.products,
+      coupons: state.coupons,
+      banners: state.banners,
+      settings: state.settings,
+      accounts: state.accounts,
+      credentials: [...credentials.entries()],
+      cart: [...state.cart.entries()],
+      idempotency: [...state.idempotency.entries()],
+      orders: state.orders,
+      inventoryMovements: state.inventoryMovements,
+      auditLogs: state.auditLogs,
+      reviews: state.reviews,
+      contactMessages: state.contactMessages,
+      newsletterSubscribers: state.newsletterSubscribers,
+    };
+  }
+
+  function persist() {
+    if (storage) storage.save(serialize());
   }
 
   // -------------------------------------------------------------------------
@@ -164,6 +207,8 @@ export function createDemoProvider() {
         paymentMethod: 'mock_upi',
         paymentRef: `pay_demo_${index + 1}`,
         notes: '',
+        idempotencyKey: null,
+        stockReleased: entry.status === 'cancelled',
         createdAt,
         updatedAt: createdAt,
         statusHistory: [{ status: entry.status, at: createdAt, note: 'Seeded demo order', actor: 'seed' }],
@@ -171,10 +216,31 @@ export function createDemoProvider() {
     });
   }
 
-  seedOrders();
+  // Hydrate from a durable snapshot (local adapter) or seed fresh state.
+  const loaded = storage ? storage.load() : null;
+  if (loaded) {
+    state.categories = loaded.categories ?? state.categories;
+    state.collections = loaded.collections ?? state.collections;
+    state.products = loaded.products ?? state.products;
+    state.coupons = loaded.coupons ?? state.coupons;
+    state.banners = loaded.banners ?? state.banners;
+    state.settings = loaded.settings ?? state.settings;
+    state.accounts = loaded.accounts ?? state.accounts;
+    state.cart = new Map(loaded.cart ?? []);
+    state.idempotency = new Map(loaded.idempotency ?? []);
+    state.orders = loaded.orders ?? [];
+    state.inventoryMovements = loaded.inventoryMovements ?? [];
+    state.auditLogs = loaded.auditLogs ?? [];
+    state.reviews = loaded.reviews ?? [];
+    state.contactMessages = loaded.contactMessages ?? [];
+    state.newsletterSubscribers = loaded.newsletterSubscribers ?? [];
+    if (Array.isArray(loaded.credentials)) credentials = new Map(loaded.credentials);
+  } else {
+    seedOrders();
+  }
 
   const provider = {
-    mode: 'demo',
+    mode: state.mode,
 
     // ----- Catalog -------------------------------------------------------
     listCategories() {
@@ -243,6 +309,7 @@ export function createDemoProvider() {
         });
       });
       recordAudit(input._actor, 'product.create', 'product', product.id, product.name);
+      persist();
       return clone(product);
     },
 
@@ -263,6 +330,7 @@ export function createDemoProvider() {
         description: input.description ?? product.description,
         status: input.status ?? product.status,
         featured: input.featured ?? product.featured,
+        accent: input.accent ?? product.accent,
         images: input.images ?? product.images,
       });
       if (Array.isArray(input.variants)) {
@@ -288,6 +356,7 @@ export function createDemoProvider() {
         });
       }
       recordAudit(input._actor, 'product.update', 'product', product.id, product.name);
+      persist();
       return clone(product);
     },
 
@@ -296,6 +365,7 @@ export function createDemoProvider() {
       if (!product) return null;
       product.status = status;
       recordAudit(actor, 'product.status', 'product', product.id, status);
+      persist();
       return clone(product);
     },
 
@@ -304,6 +374,7 @@ export function createDemoProvider() {
       if (!product) return null;
       product.status = 'archived';
       recordAudit(actor, 'product.archive', 'product', product.id, product.name);
+      persist();
       return clone(product);
     },
 
@@ -315,6 +386,7 @@ export function createDemoProvider() {
     _persistCart(cart) {
       cart.updatedAt = nowISO();
       state.cart.set(cart.id, cart);
+      persist();
       return clone(cart);
     },
 
@@ -405,6 +477,7 @@ export function createDemoProvider() {
       const coupon = { id: generateId('coup'), usedCount: 0, ...input };
       state.coupons.unshift(coupon);
       recordAudit(actor, 'coupon.create', 'coupon', coupon.id, coupon.code);
+      persist();
       return clone(coupon);
     },
 
@@ -430,10 +503,25 @@ export function createDemoProvider() {
     },
 
     /**
-     * Create an order from a cart with a synchronous stock check so two
-     * simultaneous orders cannot oversell the same variant.
+     * Create an order from a cart. A synchronous stock check runs per line so
+     * two simultaneous orders cannot oversell a variant (the local adapter is
+     * single-process; the Supabase provider does the same with a compare-and-set
+     * or an atomic SQL function).
+     *
+     * Pass an `idempotencyKey` to make checkout retry-safe: replaying a request
+     * with the same key returns the previously created order instead of creating
+     * a duplicate and charging again.
      */
-    createOrder({ cartId, contactEmail, contactPhone, shippingAddress, paymentMethod, couponCode, notes, userId, customerName }) {
+    createOrder({ cartId, contactEmail, contactPhone, shippingAddress, paymentMethod, couponCode, notes, userId, customerName, idempotencyKey }) {
+      const key = idempotencyKey ? String(idempotencyKey).trim() : '';
+      if (key && state.idempotency.has(key)) {
+        const existing = state.orders.find((o) => o.id === state.idempotency.get(key));
+        if (existing) {
+          recordAudit(userId || 'guest', 'order.retry', 'order', existing.id, `${existing.orderNumber} (idempotent)`);
+          return clone(existing);
+        }
+      }
+
       const cart = state.cart.get(cartId);
       if (!cart || cart.items.length === 0) {
         throw ApiError.badRequest('Your cart is empty.');
@@ -474,7 +562,7 @@ export function createDemoProvider() {
         });
       }
 
-      // Decrement stock atomically (single-threaded) and log movements.
+      // Reserve stock (decrement) and log movements.
       lines.forEach((line) => {
         const found = findVariant(line.variantId);
         found.variant.stock -= line.quantity;
@@ -483,7 +571,7 @@ export function createDemoProvider() {
           productId: line.productId,
           delta: -line.quantity,
           reason: 'sale',
-          note: 'Order placed (demo)',
+          note: 'Order placed (local adapter)',
           actor: userId || 'guest',
           balanceAfter: found.variant.stock,
         });
@@ -509,28 +597,34 @@ export function createDemoProvider() {
         paymentMethod,
         paymentRef: null,
         notes: notes || '',
+        idempotencyKey: key || null,
+        stockReleased: false,
         createdAt,
         updatedAt: createdAt,
-        statusHistory: [{ status: 'pending', at: createdAt, note: 'Order created (demo)', actor: userId || 'guest' }],
+        statusHistory: [{ status: 'pending', at: createdAt, note: 'Order created (local adapter)', actor: userId || 'guest' }],
       };
       state.orders.unshift(order);
+      if (key) state.idempotency.set(key, order.id);
       if (order.couponCode) {
         const usedCoupon = state.coupons.find((c) => c.code === order.couponCode);
         if (usedCoupon) usedCoupon.usedCount += 1;
       }
       state.cart.delete(cartId);
       recordAudit(userId || 'guest', 'order.create', 'order', order.id, order.orderNumber);
+      persist();
       return clone(order);
     },
 
     markOrderPaid(orderId, paymentRef) {
       const order = state.orders.find((o) => o.id === orderId);
       if (!order) throw ApiError.notFound('Order not found.');
+      if (order.paymentStatus === 'paid') return clone(order);
       order.paymentStatus = 'paid';
       order.paymentRef = paymentRef;
       order.status = 'paid';
       order.updatedAt = nowISO();
       order.statusHistory.push({ status: 'paid', at: order.updatedAt, note: 'Mock payment captured', actor: 'system' });
+      persist();
       return clone(order);
     },
 
@@ -539,6 +633,43 @@ export function createDemoProvider() {
       if (!order) throw ApiError.notFound('Order not found.');
       order.paymentStatus = 'failed';
       order.updatedAt = nowISO();
+      persist();
+      return clone(order);
+    },
+
+    /**
+     * Release reserved stock back for an order. Idempotent: a second call for
+     * the same order is a no-op. Used by cancellation workflows so cancelled
+     * (not yet fulfilled) orders put inventory back on the shelf.
+     */
+    releaseOrderStock(orderId, actor = 'system') {
+      const order = state.orders.find((o) => o.id === orderId || o.orderNumber === orderId);
+      if (!order) throw ApiError.notFound('Order not found.');
+      if (order.stockReleased) return clone(order);
+      order.items.forEach((line) => {
+        const found = findVariant(line.variantId);
+        if (!found) return;
+        found.variant.stock += line.quantity;
+        recordMovement({
+          variantId: line.variantId,
+          productId: line.productId,
+          delta: line.quantity,
+          reason: 'release',
+          note: `Released stock from ${order.orderNumber}`,
+          actor: actor || 'system',
+          balanceAfter: found.variant.stock,
+        });
+      });
+      order.stockReleased = true;
+      order.updatedAt = nowISO();
+      order.statusHistory.push({
+        status: order.status,
+        at: order.updatedAt,
+        note: 'Reserved inventory released',
+        actor: actor || 'system',
+      });
+      recordAudit(actor || 'system', 'inventory.release', 'order', order.id, order.orderNumber);
+      persist();
       return clone(order);
     },
 
@@ -555,6 +686,10 @@ export function createDemoProvider() {
       order.updatedAt = nowISO();
       order.statusHistory.push({ status, at: order.updatedAt, note: note || '', actor: actor || 'system' });
       recordAudit(actor, 'order.status', 'order', order.id, `${order.orderNumber} -> ${status}`);
+      if (status === 'cancelled' && !order.stockReleased) {
+        provider.releaseOrderStock(order.id, actor);
+      }
+      persist();
       return clone(order);
     },
 
@@ -658,6 +793,7 @@ export function createDemoProvider() {
         balanceAfter: next,
       });
       recordAudit(actor, 'inventory.adjust', 'variant', variantId, `${delta} (${reason})`);
+      persist();
       return { variant: clone(found.variant), movement: clone(movement) };
     },
 
@@ -687,7 +823,7 @@ export function createDemoProvider() {
     authenticate(email, password) {
       const account = state.accounts.find((a) => a.email === email.toLowerCase());
       if (!account) return null;
-      if (credentials.get(account.id) !== password) return null;
+      if (!verifyPassword(password, credentials.get(account.id))) return null;
       if (account.status !== 'active') return { disabled: true, account: clone(account) };
       return { account: clone(account) };
     },
@@ -715,7 +851,8 @@ export function createDemoProvider() {
         createdAt: nowISO(),
       };
       state.accounts.push(account);
-      credentials.set(account.id, password);
+      credentials.set(account.id, hashPassword(password));
+      persist();
       return clone(account);
     },
 
@@ -754,6 +891,7 @@ export function createDemoProvider() {
       product.reviewCount = nextCount;
       product.rating = Math.round(((priorRating * priorCount + rating) / nextCount) * 10) / 10;
       recordAudit(userId || 'guest', 'review.create', 'product', productId, `${rating} star`);
+      persist();
       return clone(review);
     },
 
@@ -762,6 +900,7 @@ export function createDemoProvider() {
       if (!review) return null;
       review.status = status;
       recordAudit(actor, 'review.status', 'review', id, status);
+      persist();
       return clone(review);
     },
 
@@ -781,6 +920,7 @@ export function createDemoProvider() {
         createdAt: nowISO(),
       };
       state.contactMessages.unshift(message);
+      persist();
       return clone(message);
     },
 
@@ -788,6 +928,7 @@ export function createDemoProvider() {
       const message = state.contactMessages.find((m) => m.id === id);
       if (!message) return null;
       message.status = status;
+      persist();
       return clone(message);
     },
 
@@ -801,6 +942,7 @@ export function createDemoProvider() {
       if (existing) return { subscriber: clone(existing), already: true };
       const subscriber = { id: generateId('sub'), email: normalized, createdAt: nowISO() };
       state.newsletterSubscribers.unshift(subscriber);
+      persist();
       return { subscriber: clone(subscriber), already: false };
     },
 
@@ -872,12 +1014,18 @@ export function createDemoProvider() {
     _reset() {
       state.orders.length = 0;
       state.cart.clear();
+      state.idempotency.clear();
       state.inventoryMovements.length = 0;
       state.auditLogs.length = 0;
       state.reviews.length = 0;
       state.contactMessages.length = 0;
       state.newsletterSubscribers.length = 0;
+      state.products = clone(seedProducts);
+      state.coupons = clone(seedCoupons);
+      state.accounts = clone(demoAccounts).map(({ password: _pw, ...rest }) => ({ ...rest, id: rest.id }));
+      credentials = new Map(clone(demoAccounts).map((a) => [a.id, hashPassword(a.password)]));
       seedOrders();
+      persist();
     },
   };
 

@@ -75,7 +75,7 @@ const CART_ITEM_SELECT = `
 const ORDER_SELECT = `
   id, order_number, user_id, customer_name, contact_email, contact_phone, shipping_address,
   subtotal_paise, discount_paise, shipping_paise, total_paise, coupon_code, status, payment_status,
-  payment_method, payment_ref, notes, created_at, updated_at,
+  payment_method, payment_ref, notes, idempotency_key, stock_released, created_at, updated_at,
   items:order_items (
     id, product_id, variant_id, name, slug, sku, size, color, unit_price_paise, quantity,
     product:products ( images:product_images ( url, alt, position ) )
@@ -212,6 +212,8 @@ function mapOrder(row) {
     paymentMethod: row.payment_method,
     paymentRef: row.payment_ref,
     notes: row.notes,
+    idempotencyKey: row.idempotency_key,
+    stockReleased: Boolean(row.stock_released),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     statusHistory: (row.status_history || [])
@@ -735,6 +737,17 @@ export function createSupabaseProvider() {
       return data ? mapOrder(data) : null;
     },
 
+    async _orderIdForIdempotencyKey(key) {
+      if (!key) return null;
+      const { data, error } = await service()
+        .from('orders')
+        .select('id')
+        .eq('idempotency_key', key)
+        .maybeSingle();
+      if (error) throw ApiError.internal(`Database error: ${error.message}`);
+      return data?.id ?? null;
+    },
+
     async _decrementStock(line, actor) {
       const { data: current, error } = await service()
         .from('product_variants')
@@ -772,8 +785,18 @@ export function createSupabaseProvider() {
     /**
      * Create an order from a cart. Stock is validated, then decremented with an
      * optimistic compare-and-set so concurrent checkouts cannot oversell.
+     *
+     * Pass an `idempotencyKey` to make checkout retry-safe: replaying a request
+     * with the same key returns the previously created order instead of creating
+     * a duplicate and charging again (backed by `orders.idempotency_key`).
      */
-    async createOrder({ cartId, contactEmail, contactPhone, shippingAddress, paymentMethod, couponCode, notes, userId, customerName }) {
+    async createOrder({ cartId, contactEmail, contactPhone, shippingAddress, paymentMethod, couponCode, notes, userId, customerName, idempotencyKey }) {
+      const key = idempotencyKey ? String(idempotencyKey).trim() : '';
+      if (key) {
+        const replay = await provider._orderIdForIdempotencyKey(key);
+        if (replay) return provider.getOrder(replay);
+      }
+
       const cart = await provider.getCart(cartId);
       if (!cart.items.length) throw ApiError.badRequest('Your cart is empty.');
 
@@ -837,10 +860,18 @@ export function createSupabaseProvider() {
           payment_status: 'pending',
           payment_method: paymentMethod,
           notes: notes || '',
+          idempotency_key: key || null,
+          stock_released: false,
         })
         .select('id')
         .single();
-      if (orderError) throw ApiError.internal(`Database error: ${orderError.message}`);
+      if (orderError) {
+        if (orderError.code === '23505' && key) {
+          const replay = await provider._orderIdForIdempotencyKey(key);
+          if (replay) return provider.getOrder(replay);
+        }
+        throw ApiError.internal(`Database error: ${orderError.message}`);
+      }
 
       unwrap(
         await service().from('order_items').insert(
@@ -924,6 +955,23 @@ export function createSupabaseProvider() {
       return provider.getOrder(order.id);
     },
 
+    /**
+     * Release reserved stock back for an order. Idempotent (the database
+     * function guards on `orders.stock_released`). Used by cancellation
+     * workflows so cancelled, unfulfilled orders put inventory back.
+     */
+    async releaseOrderStock(orderId, actor = 'system') {
+      const order = await provider.getOrder(orderId);
+      if (!order) throw ApiError.notFound('Order not found.');
+      if (order.stockReleased) return order;
+      const { error } = await service().rpc('release_order_stock', {
+        p_order_id: order.id,
+        p_actor: actor || 'system',
+      });
+      if (error) throw ApiError.internal(`Database error: ${error.message}`);
+      return provider.getOrder(order.id);
+    },
+
     async updateOrderStatus(orderId, status, note, actor) {
       const order = await provider.getOrder(orderId);
       if (!order) throw ApiError.notFound('Order not found.');
@@ -952,6 +1000,9 @@ export function createSupabaseProvider() {
           detail: `${order.orderNumber} -> ${status}`,
         }),
       );
+      if (status === 'cancelled' && !order.stockReleased) {
+        await provider.releaseOrderStock(order.id, actor);
+      }
       return provider.getOrder(order.id);
     },
 

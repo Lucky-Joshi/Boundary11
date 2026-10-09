@@ -26,6 +26,10 @@ router.post(
   }),
 );
 
+router.post('/logout', requireAuth, asyncHandler(async (req, res) => {
+  res.json(await service.logout(req));
+}));
+
 router.get('/me', requireAuth, asyncHandler(async (req, res) => {
   res.json(await service.me(req));
 }));

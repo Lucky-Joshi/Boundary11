@@ -41,4 +41,8 @@ router.get('/orders/:id', requireAuth, asyncHandler(async (req, res) => {
   res.json(await orders.getOrder(req));
 }));
 
+router.post('/orders/:id/cancel', requireAuth, asyncHandler(async (req, res) => {
+  res.json(await orders.cancelOrder(req));
+}));
+
 export default router;

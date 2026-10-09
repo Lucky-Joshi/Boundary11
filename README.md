@@ -11,10 +11,11 @@ All branding, product names and artwork are original. The project deliberately a
 any cricket board marks, national team crests, sponsor logos or player likenesses, and
 ships no third-party licensed merchandise.
 
-> **Prototype status.** By default the platform runs entirely on an in-memory
-> **demo provider** with a **mock payment** flow: zero setup, no database or payment
-> gateway required. Adding Supabase credentials switches the API to the
-> **Supabase provider** automatically (see _Milestone 2_ below).
+> **Prototype status.** With no configuration the API runs on a **durable local
+> provider** (data persisted to `server/.data/`) plus the **demo auth** and
+> **mock payment** flows: zero setup, no database or payment gateway required.
+> Adding Supabase credentials switches to the **Supabase provider** and
+> **Supabase Auth** automatically (see _Milestone 2_ below).
 
 ---
 
@@ -25,7 +26,9 @@ ships no third-party licensed merchandise.
 | Frontend   | React 18, Vite 6, React Router 6, TanStack Query 5, plain CSS tokens    |
 | Backend    | Node.js (ESM), Express 4, Zod, Helmet, express-rate-limit               |
 | Shared     | `@boundary11/shared` — constants, money maths, cart/catalog logic, Zod  |
-| Data (M2)  | Supabase (PostgreSQL, Auth, Storage) + Row Level Security               |
+| Data (M2)  | Supabase (PostgreSQL, Auth, Storage) + Row Level Security |
+| Auth (M2)  | Swappable — demo (HMAC, memory-only) or Supabase Auth    |
+| Payments   | Mock gateway behind a provider seam (swap for Razorpay)  |
 | Testing    | Vitest, React Testing Library, Supertest                                |
 | Monorepo   | npm workspaces                                                          |
 
@@ -45,7 +48,9 @@ boundary11/
 │     ├─ config/         # env + logger
 │     ├─ middleware/     # auth, validation, errors, rate limiting
 │     ├─ modules/        # products, categories, cart, orders, auth, inventory, reviews, admin, misc
-│     ├─ providers/      # demo + supabase providers + selection layer
+│     ├─ providers/      # demo/local/supabase data providers + selection layer
+│     ├─ auth/           # demo/supabase auth providers + selection layer
+│     ├─ payments/       # mock payment provider + selection layer
 │     ├─ utils/          # token, csv and other helpers
 │     └─ data/           # demo catalog seed
 ├─ packages/
@@ -53,6 +58,7 @@ boundary11/
 └─ supabase/
    ├─ migrations/0001_init.sql       # core schema + RLS
    ├─ migrations/0002_engagement.sql # reviews, contact messages, subscribers + RLS
+   ├─ migrations/0003_commerce.sql   # roles, addresses, payments, orders idempotency/stock, atomic RPC
    └─ seed.sql                       # demo content
 ```
 
@@ -121,9 +127,13 @@ secrets there.
 | `PORT`                      | API port (default `5000`)                                      |
 | `NODE_ENV`                  | `development` \| `test` \| `production`                        |
 | `CORS_ORIGINS`              | Comma-separated allowed origins for CORS                       |
-| `SUPABASE_URL`              | Supabase project URL (blank ⇒ demo mode)                       |
+| `DATA_PROVIDER`             | `auto` (default) \| `local` \| `supabase` \| `demo`            |
+| `AUTH_PROVIDER`             | `auto` (default) \| `demo` \| `supabase`                       |
+| `LOCAL_DATA_DIR`            | Where the local adapter persists its JSON snapshot            |
+| `SUPABASE_URL`              | Supabase project URL (blank ⇒ local/demo mode)                 |
 | `SUPABASE_ANON_KEY`         | Supabase anon key                                              |
-| `SUPABASE_SERVICE_ROLE_KEY` | Server-only key; leaving blank keeps the API in demo mode      |
+| `SUPABASE_SERVICE_ROLE_KEY` | Server-only key; leaving blank keeps the API in local mode     |
+| `STOREFRONT_URL`/`ADMIN_URL`| Frontend origins (CORS-friendly defaults)                     |
 | `VITE_API_URL`              | API base URL used by both frontends                            |
 | `DEMO_AUTH_SECRET`          | Signs demo tokens; changing it invalidates existing tokens     |
 
@@ -166,9 +176,9 @@ Base URL: `/api/v1`. Errors use a consistent shape: `{ error: { code, message, f
 | POST   | `/cart/items`                     | Add item                               |
 | PATCH  | `/cart/items/:itemId`             | Change quantity                        |
 | DELETE | `/cart/items/:itemId` `/cart`     | Remove item / clear cart               |
-| POST   | `/checkout`                       | Create an order (mock payment)         |
+| POST   | `/checkout`                       | Create an order (mock payment, idempotent on `Idempotency-Key`) |
 | POST   | `/payments/verify`                | Verify the mock payment outcome        |
-| POST   | `/auth/login` `/auth/register`    | Issue / create account                 |
+| POST   | `/auth/login` `/auth/register` `/auth/logout` | Issue, create, revoke a session      |
 | POST   | `/contact`                        | Persist a contact message (demo store) |
 | POST   | `/newsletter`                     | Subscribe an email (idempotent)        |
 
@@ -180,6 +190,7 @@ Base URL: `/api/v1`. Errors use a consistent shape: `{ error: { code, message, f
 | POST   | `/products/:slug/reviews`   | Submit a product review                  |
 | GET    | `/orders`                   | Own orders (staff see all)               |
 | GET    | `/orders/:id`               | Own order (staff see any)                |
+| POST   | `/orders/:id/cancel`        | Owner or staff; releases inventory, returns 422 on non-cancellable states |
 
 ### Admin (staff roles)
 
@@ -213,6 +224,17 @@ and status changes, `orders` + status updates, `inventory` + `adjustments`, `cus
   console (RFC-4180 escaped).
 - **Recently viewed** — a homepage rail of the last products the visitor opened, stored
   under `b11_recently_viewed`.
+- **Durable local data** — the default `local` adapter persists the whole store to
+  `server/.data/boundary11.local.json` (atomic temp-file writes), so orders and accounts
+  survive API restarts with zero setup.
+- **Swappable auth** — sign-in, registration, session lookup and logout all go through an
+  auth-provider interface. The demo provider issues short-lived memory-only tokens and
+  revokes them on logout; the Supabase provider verifies through Supabase Auth.
+- **Sessions you can revoke** — logout invalidates the token server-side in both modes,
+  and both frontends force a sign-out when the API reports an expired session.
+- **Safer checkouts** — an `Idempotency-Key` makes retries return the first order instead
+  of double-charging, and orders can be cancelled by the buyer or staff with inventory
+  released back to stock (atomic in both file and SQL storage).
 
 ---
 
@@ -221,12 +243,14 @@ and status changes, `orders` + status updates, `inventory` + `adjustments`, `cus
 - **Money is always an integer number of paise** (1 rupee = 100 paise). No floating point
   is ever used for money; formatting is centralised in `@boundary11/shared`.
 - **Auth tokens live in module memory only**, never in `localStorage`. A page refresh
-  signs you out. Production should use server-issued httpOnly cookies via Supabase Auth.
+  signs you out; logout also revokes the token server-side. Production should use
+  server-issued httpOnly cookies via Supabase Auth.
 - **Only non-sensitive client state is persisted**: the cart id (`b11_cart_id`), the
   wishlist (`b11_wishlist`) and recently viewed products (`b11_recently_viewed`) live in
   `localStorage`.
-- **Data access goes through a provider interface.** The in-memory `demoProvider` can be
-  swapped for a Supabase-backed provider without touching the route/controller layer.
+- **Data access goes through a provider interface.** The durable `local` adapter (and the
+  refresh-only `demo` adapter) can be swapped for a Supabase-backed provider without
+  touching the route/controller layer. Auth and payments have the same seam.
 - **One shared package** holds constants, validation and business maths so the API and
   both frontends cannot drift.
 - **Free shipping** over ₹1,999 (`199900` paise); otherwise a flat ₹99 (`9900` paise).
@@ -245,28 +269,38 @@ npm test
 Coverage:
 
 - `packages/shared` — money, cart totals, catalog helpers, validation (47 tests)
-- `server` — token utilities, provider interface/selection, and the API surface via
-  Supertest, including reviews, contact/newsletter persistence and CSV exports (54 tests)
+- `server` — token utilities, provider interface/selection, the durable local adapter,
+  and the API surface via Supertest — including reviews, contact/newsletter persistence,
+  CSV exports, logout/revocation, idempotent checkout and order cancellation (69 tests)
 - `storefront` — component behaviour with RTL (4 tests)
 - `admin` — auth gate + dashboard flow with RTL (2 tests)
 
-> Note: the demo provider resets on every server restart; orders placed in the UI are not
-> persisted across restarts.
+> Note: with no `.env`, the API uses the **durable local adapter**, which persists its
+> snapshot to `server/.data/`. Set `DATA_PROVIDER=demo` for the classic
+> reset-on-restart in-memory mode.
 
 ---
 
 ## Milestone 2 — Supabase
 
-The API now ships **two interchangeable data providers** behind a single
-repository interface (`server/src/providers/index.js`):
+The API ships **three interchangeable data providers** behind a single repository
+interface (`server/src/providers/index.js`):
 
-- `demoProvider` — in-memory prototype data (the default).
+- `demoProvider` — in-memory prototype data (optimistic, resets on restart).
+- `localProvider` — the default: the demo dataset made **durable** through
+  `server/src/providers/fileStore.js` (atomic JSON snapshot in `server/.data/`).
 - `supabaseProvider` — a real Postgres backend via Supabase.
 
-Provider selection is automatic: the API uses Supabase when `SUPABASE_URL` and
-`SUPABASE_SERVICE_ROLE_KEY` are set, and falls back to the demo provider otherwise.
-Every method on the provider interface is asynchronous, so the service layer `await`s
-calls and works identically against either provider.
+Provider selection is automatic: `auto` uses Supabase when `SUPABASE_URL` and
+`SUPABASE_SERVICE_ROLE_KEY` are set, and otherwise falls back to `local`. Explicit
+values (`DATA_PROVIDER=local|demo|supabase`) force a mode. Every method on the
+provider interface is asynchronous, so the service layer `await`s calls and works
+identically against any provider.
+
+Auth is swappable too (`AUTH_PROVIDER=auto|demo|supabase`): the demo provider signs
+memory-only HMAC tokens and revokes them on logout; `supabase` verifies credentials
+through Supabase Auth. Payments run through `server/src/payments/index.js` — the mock
+gateway never needs configuration.
 
 ### Enabling Supabase
 
@@ -275,8 +309,10 @@ calls and works identically against either provider.
 
    ```bash
    supabase db reset        # applies supabase/migrations/*, then supabase/seed.sql
-   # or paste supabase/migrations/0001_init.sql and supabase/seed.sql into the SQL editor
    ```
+
+   Apply all of `0001_init.sql`, `0002_engagement.sql` and `0003_commerce.sql`, or run
+   `supabase db reset` which applies every migration in order.
 
 3. Put the keys in `.env` (server-only, never commit):
 
@@ -294,11 +330,16 @@ Notes:
   `signInWithPassword` (anon key); `register()` creates the user with the service
   role and mirrors a row into `profiles`. The API still issues its own short-lived
   session token, and the role/status is re-read from `profiles` on each request.
+- **Migration 0003** adds the role plumbing (`user_roles` + `b11_handle_new_user`),
+  shipping addresses, mock payment records, idempotency/stock columns on `orders`,
+  and the atomic `release_order_stock()` RPC. It also closes the RLS role gap from
+  0001 by locking `profiles` to `full_name`/`email` updates via `is_staff()`/`is_admin()`
+  reading `user_roles`.
 - **Stock is decremented with an optimistic compare-and-set** (`update ... where stock = ?`)
   so concurrent checkouts cannot oversell a variant.
-- **Row Level Security** is defined in the migration for any direct client access;
+- **Row Level Security** is defined in the migrations for any direct client access;
   the server talks to Postgres with the service role.
-- The demo seed accounts (below) are created by `supabase/seed.sql` with the same
+- The demo seed accounts are created by `supabase/seed.sql` with the same
   passwords, so the same logins work in both modes.
 
 Remaining for a production deployment:
@@ -306,6 +347,7 @@ Remaining for a production deployment:
 1. Replace the mocked `x-cart-id` header with authenticated, server-owned carts.
 2. Move the session token to httpOnly cookies and verify Supabase JWTs end-to-end.
 3. Replace the mock payment provider with a real gateway and a signed webhook.
+4. Multi-process locking for the local file adapter (currently single-process only).
 
 ---
 
@@ -313,3 +355,5 @@ Remaining for a production deployment:
 
 This is an original demonstration project. All names, designs and copy are fictional and
 created for Boundary11. Do not add real cricket board, team, sponsor or player assets.
+
+

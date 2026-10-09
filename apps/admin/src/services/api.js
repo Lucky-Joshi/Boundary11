@@ -52,6 +52,16 @@ async function request(path, { method = 'GET', body } = {}) {
     error.status = response.status;
     error.code = data?.error?.code || 'ERROR';
     error.fields = data?.error?.fields;
+
+    // An authenticated request rejected with UNAUTHORIZED means the session
+    // is invalid or expired (not a failed login attempt — authToken is null
+    // then). Clear it and notify the app so it can end the session.
+    if (error.status === 401 && error.code === 'UNAUTHORIZED' && authToken) {
+      setAuthToken(null);
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('admin-auth:expired'));
+      }
+    }
     throw error;
   }
 

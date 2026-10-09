@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useMemo, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { api, setAuthToken } from '../services/api.js';
 
 const AdminAuthContext = createContext(null);
@@ -7,6 +7,12 @@ const STAFF_ROLES = ['admin', 'support'];
 
 export function AdminAuthProvider({ children }) {
   const [user, setUser] = useState(null);
+
+  useEffect(() => {
+    const onExpired = () => setUser(null);
+    window.addEventListener('admin-auth:expired', onExpired);
+    return () => window.removeEventListener('admin-auth:expired', onExpired);
+  }, []);
 
   const login = useCallback(async (email, password) => {
     const result = await api.post('/auth/login', { email, password });
@@ -18,7 +24,12 @@ export function AdminAuthProvider({ children }) {
     return result.user;
   }, []);
 
-  const logout = useCallback(() => {
+  const logout = useCallback(async () => {
+    try {
+      await api.post('/auth/logout');
+    } catch {
+      // Best effort — the local token is still cleared below.
+    }
     setAuthToken(null);
     setUser(null);
   }, []);

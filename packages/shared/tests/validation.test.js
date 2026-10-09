@@ -28,6 +28,27 @@ describe('validation', () => {
     expect(checkoutSchema.safeParse(validCheckout).success).toBe(true);
   });
 
+  it('accepts a valid checkout payload with idempotencyKey', () => {
+    const withKey = { ...validCheckout, idempotencyKey: 'idemp-key_abc-123' };
+    expect(checkoutSchema.safeParse(withKey).success).toBe(true);
+  });
+
+  it('rejects an invalid idempotencyKey (too short)', () => {
+    const bad = { ...validCheckout, idempotencyKey: 'ab' };
+    const result = checkoutSchema.safeParse(bad);
+    expect(result.success).toBe(false);
+    const errors = formatZodError(result.error);
+    expect(errors.idempotencyKey).toBe('Idempotency key uses invalid characters.');
+  });
+
+  it('rejects an invalid idempotencyKey (illegal chars)', () => {
+    const bad = { ...validCheckout, idempotencyKey: 'id@key!' };
+    const result = checkoutSchema.safeParse(bad);
+    expect(result.success).toBe(false);
+    const errors = formatZodError(result.error);
+    expect(errors.idempotencyKey).toBe('Idempotency key uses invalid characters.');
+  });
+
   it('rejects an invalid PIN code', () => {
     const bad = { ...validCheckout, shippingAddress: { ...validCheckout.shippingAddress, postalCode: '123' } };
     const result = checkoutSchema.safeParse(bad);

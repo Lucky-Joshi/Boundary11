@@ -17,6 +17,18 @@ export function signToken(payload, ttlSeconds = 60 * 60 * 24 * 7) {
 }
 
 export function verifyToken(token) {
+  const parsed = decodeToken(token);
+  if (!parsed || parsed.expired) return null;
+  return parsed.payload;
+}
+
+/**
+ * Inspect a demo token without failing when it has expired. Returns
+ * { payload, expired } for a validly signed token, or null when the token is
+ * malformed or its signature is invalid. Lets the auth layer distinguish
+ * "expired session" from "invalid token" so the API can respond accurately.
+ */
+export function decodeToken(token) {
   if (!token || typeof token !== 'string' || !token.includes('.')) return null;
   const [data, signature] = token.split('.');
   if (!data || !signature) return null;
@@ -28,8 +40,7 @@ export function verifyToken(token) {
   }
   try {
     const payload = JSON.parse(Buffer.from(data, 'base64url').toString('utf8'));
-    if (!payload.exp || payload.exp < Date.now()) return null;
-    return payload;
+    return { payload, expired: Boolean(payload.exp && payload.exp < Date.now()) };
   } catch {
     return null;
   }

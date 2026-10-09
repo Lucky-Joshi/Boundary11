@@ -1,29 +1,31 @@
 import { ApiError } from '../utils/ApiError.js';
-import { verifyToken } from '../utils/token.js';
-import { getProvider } from '../providers/index.js';
+import { getAuthProvider } from '../auth/index.js';
 
 /**
- * Populates req.user when a valid bearer token is present.
- * The account is re-read from the provider so role changes and disabled
- * accounts take effect on the next request.
+ * Populates req.user (and req.token) when a valid bearer token is present.
+ * The auth provider re-reads the account so role changes and disabled
+ * accounts take effect on the next request; expired/revoked sessions simply
+ * fall through to unauthenticated (protected routes then return 401).
  */
 export async function authenticate(req, _res, next) {
   req.user = null;
+  req.token = null;
   const header = req.headers.authorization || '';
   const token = header.startsWith('Bearer ') ? header.slice(7).trim() : null;
   if (!token) return next();
   try {
-    const payload = verifyToken(token);
-    if (payload?.sub) {
-      const account = await getProvider().getAccountById(payload.sub);
-      if (account && account.status === 'active') {
-        req.user = {
-          id: account.id,
-          email: account.email,
-          role: account.role,
-          name: account.fullName,
-        };
-      }
+    const result = await getAuthProvider().resolveSession(token);
+    if (result?.user) {
+      const { user } = result;
+      req.user = {
+        id: user.id,
+        email: user.email,
+        role: user.role,
+        name: user.fullName,
+        fullName: user.fullName,
+        createdAt: user.createdAt,
+      };
+      req.token = token;
     }
     return next();
   } catch (error) {

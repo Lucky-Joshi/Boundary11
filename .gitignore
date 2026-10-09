@@ -44,6 +44,9 @@ Thumbs.db
 supabase/.branches
 supabase/.temp
 
+# Local durable data-provider snapshot
+server/.data/
+
 # Misc
 .cache/
 tmp/

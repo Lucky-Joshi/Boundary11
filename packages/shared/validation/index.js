@@ -31,6 +31,14 @@ export const checkoutSchema = z.object({
   paymentMethod: z.enum(['mock_upi', 'mock_card', 'cod']).default('mock_upi'),
   couponCode: z.string().trim().max(40).optional().default(''),
   notes: z.string().trim().max(500).optional().default(''),
+  // Optional client-supplied idempotency key. May also be sent in the
+  // `Idempotency-Key` header; the body field wins when both are present.
+  idempotencyKey: z
+    .string()
+    .trim()
+    .max(128, 'Idempotency key is too long.')
+    .regex(/^[A-Za-z0-9._:-]{3,128}$/, 'Idempotency key uses invalid characters.')
+    .optional(),
 });
 
 export const cartItemInputSchema = z.object({

@@ -1,4 +1,5 @@
 import { getProvider } from '../../providers/index.js';
+import { getPaymentProvider } from '../../payments/index.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { resolveCartId } from '../cart/cart.service.js';
 
@@ -9,6 +10,10 @@ import { resolveCartId } from '../cart/cart.service.js';
  *
  * DEMO: no money moves. The returned "payment session" is a mock that the
  * client resolves through POST /payments/verify.
+ *
+ * Idempotency: an `Idempotency-Key` (header) and/or `idempotencyKey` (body)
+ * makes retries safe — replaying the same key returns the order created by
+ * the first attempt instead of charging twice.
  */
 export async function createCheckout(req) {
   const provider = getProvider();
@@ -20,7 +25,11 @@ export async function createCheckout(req) {
     paymentMethod,
     couponCode,
     notes,
+    idempotencyKey,
   } = req.body;
+
+  const idempotency =
+    (idempotencyKey && idempotencyKey.trim()) || (req.get('idempotency-key') || '').trim() || null;
 
   const order = await provider.createOrder({
     cartId,
@@ -32,6 +41,7 @@ export async function createCheckout(req) {
     notes,
     userId: req.user?.id || null,
     customerName: req.user?.name || shippingAddress.fullName,
+    idempotencyKey: idempotency,
   });
 
   if (paymentMethod === 'cod') {
@@ -39,25 +49,17 @@ export async function createCheckout(req) {
     return { order: confirmed, payment: { provider: 'mock', method: 'cod', status: 'on_delivery', amountPaise: confirmed.totalPaise } };
   }
 
-  return {
-    order,
-    payment: {
-      provider: 'mock',
-      method: paymentMethod,
-      status: 'requires_confirmation',
-      sessionId: `mock_session_${order.id.slice(-6)}`,
-      amountPaise: order.totalPaise,
-      message: 'DEMO payment session. No real money is charged.',
-    },
-  };
+  const payments = getPaymentProvider();
+  const session = await payments.createCheckoutSession({ order, method: paymentMethod });
+  return { order, payment: session };
 }
 
 /**
  * Confirm the DEMO payment outcome for an order.
  *
  * DEMO ONLY. In production this endpoint would verify a Razorpay signature
- * server-side; here it simply flips the order status based on the requested
- * demo outcome so success and failure paths can be exercised end to end.
+ * server-side; here the mock payment provider decides the outcome so success
+ * and failure paths can be exercised end to end.
  */
 export async function verifyPayment(req) {
   const provider = getProvider();
@@ -70,26 +72,14 @@ export async function verifyPayment(req) {
     return { order, payment: { status: 'already_paid_demo' } };
   }
 
-  if (outcome === 'failure') {
+  const payments = getPaymentProvider();
+  const result = await payments.confirmPayment({ order, success: outcome !== 'failure' });
+
+  if (result.status === 'failed') {
     const failed = await provider.markPaymentFailed(order.id);
-    return {
-      order: failed,
-      payment: {
-        provider: 'mock',
-        status: 'failed',
-        message: 'DEMO payment failed. No money was charged. You can retry from the order page.',
-      },
-    };
+    return { order: failed, payment: result };
   }
 
-  const paid = await provider.markOrderPaid(order.id, `mock_pay_${order.id.slice(-6)}`);
-  return {
-    order: paid,
-    payment: {
-      provider: 'mock',
-      status: 'paid',
-      reference: paid.paymentRef,
-      message: 'DEMO payment captured. This is not a real transaction.',
-    },
-  };
+  const paid = await provider.markOrderPaid(order.id, result.reference);
+  return { order: paid, payment: { ...result, provider: 'mock', status: 'paid', reference: paid.paymentRef } };
 }

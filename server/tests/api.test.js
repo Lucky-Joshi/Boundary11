@@ -366,6 +366,152 @@ describe('checkout and mock payment', () => {
   });
 });
 
+describe('logout and session expiry', () => {
+  it('revokes a token so it can no longer authenticate', async () => {
+    const token = await login('fan@boundary11.example', 'customer123');
+    const loggedOut = await request(app).post('/api/v1/auth/logout').set(auth(token));
+    expect(loggedOut.status).toBe(200);
+    expect(loggedOut.body.revoked).toBe(true);
+
+    const me = await request(app).get('/api/v1/auth/me').set(auth(token));
+    expect(me.status).toBe(401);
+
+    // A token not revoked still works.
+    const meAgain = await request(app).get('/api/v1/auth/me').set(auth(customerToken));
+    expect(meAgain.status).toBe(200);
+  });
+});
+
+describe('checkout idempotency and cancellation', () => {
+  const checkoutBody = {
+    contactEmail: 'buyer@example.com',
+    contactPhone: '+91 9876543210',
+    shippingAddress: {
+      fullName: 'Test Buyer',
+      phone: '9876543210',
+      line1: '1 Test Lane',
+      city: 'Pune',
+      state: 'Maharashtra',
+      postalCode: '411001',
+    },
+    paymentMethod: 'mock_upi',
+  };
+
+  async function freshCart() {
+    const id = `cart_${Math.random().toString(36).slice(2)}`;
+    const product = await request(app).get('/api/v1/products/cover-drive-training-tee');
+    const variant = product.body.variants.find((v) => v.stock > 1);
+    await request(app).post('/api/v1/cart/items').set('x-cart-id', id).send({ variantId: variant.id, quantity: 1 });
+    return { id, variant };
+  }
+
+  it('is idempotent when an Idempotency-Key is replayed', async () => {
+    const { id, variant } = await freshCart();
+    const key = `test-key-${Math.random().toString(36).slice(2)}`;
+    const first = await request(app)
+      .post('/api/v1/checkout')
+      .set('x-cart-id', id)
+      .set('Idempotency-Key', key)
+      .send(checkoutBody);
+    expect(first.status).toBe(201);
+
+    const second = await request(app)
+      .post('/api/v1/checkout')
+      .set('x-cart-id', id)
+      .set('Idempotency-Key', key)
+      .send(checkoutBody);
+    expect(second.status).toBe(201);
+    expect(second.body.order.id).toBe(first.body.order.id);
+
+    // Stock was reserved exactly once even though checkout ran twice.
+    const product = await request(app).get('/api/v1/products/cover-drive-training-tee');
+    const after = product.body.variants.find((v) => v.id === variant.id);
+    expect(after.stock).toBe(variant.stock - 1);
+  });
+
+  it('rejects a malformed idempotency key', async () => {
+    const { id } = await freshCart();
+    const res = await request(app)
+      .post('/api/v1/checkout')
+      .set('x-cart-id', id)
+      .send({ ...checkoutBody, idempotencyKey: 'bad key with spaces!' });
+    expect(res.status).toBe(400);
+  });
+
+  it('lets the owner cancel a pending order and releases reserved stock', async () => {
+    const { id, variant } = await freshCart();
+    const created = await request(app)
+      .post('/api/v1/checkout')
+      .set('x-cart-id', id)
+      .set(auth(customerToken))
+      .send(checkoutBody);
+
+    const cancelled = await request(app)
+      .post(`/api/v1/orders/${created.body.order.id}/cancel`)
+      .set(auth(customerToken));
+    expect(cancelled.status).toBe(200);
+    expect(cancelled.body.status).toBe('cancelled');
+    expect(cancelled.body.stockReleased).toBe(true);
+
+    const product = await request(app).get('/api/v1/products/cover-drive-training-tee');
+    const after = product.body.variants.find((v) => v.id === variant.id);
+    expect(after.stock).toBe(variant.stock);
+  });
+
+  it('lets staff cancel any order', async () => {
+    const { id } = await freshCart();
+    const created = await request(app).post('/api/v1/checkout').set('x-cart-id', id).send(checkoutBody);
+    const res = await request(app)
+      .post(`/api/v1/orders/${created.body.order.id}/cancel`)
+      .set(auth(adminToken));
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('cancelled');
+  });
+
+  it('blocks a stranger from cancelling someone elses order', async () => {
+    const other = {
+      fullName: 'Other Buyer',
+      email: `other_${Math.random().toString(36).slice(2)}@example.com`,
+      password: 'opensesame123',
+    };
+    const registered = await request(app)
+      .post('/api/v1/auth/register')
+      .send({ fullName: other.fullName, email: other.email, password: other.password });
+    const strangerToken = registered.body.token;
+
+    const { id } = await freshCart();
+    const created = await request(app).post('/api/v1/checkout').set('x-cart-id', id).send(checkoutBody);
+    const res = await request(app)
+      .post(`/api/v1/orders/${created.body.order.id}/cancel`)
+      .set(auth(strangerToken));
+    expect(res.status).toBe(403);
+  });
+
+  it('rejects cancelling a shipped order', async () => {
+    const { id } = await freshCart();
+    const created = await request(app)
+      .post('/api/v1/checkout')
+      .set('x-cart-id', id)
+      .set(auth(customerToken))
+      .send(checkoutBody);
+    await request(app)
+      .post('/api/v1/payments/verify')
+      .send({ orderId: created.body.order.id, outcome: 'success' });
+    await request(app)
+      .patch(`/api/v1/admin/orders/${created.body.order.id}/status`)
+      .set(auth(adminToken))
+      .send({ status: 'processing' });
+    await request(app)
+      .patch(`/api/v1/admin/orders/${created.body.order.id}/status`)
+      .set(auth(adminToken))
+      .send({ status: 'shipped' });
+    const res = await request(app)
+      .post(`/api/v1/orders/${created.body.order.id}/cancel`)
+      .set(auth(customerToken));
+    expect(res.status).toBe(422);
+  });
+});
+
 describe('product reviews', () => {
   let reviewId;
 

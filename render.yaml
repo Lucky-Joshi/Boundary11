@@ -1,0 +1,28 @@
+services:
+  - type: web
+    name: boundary11-api
+    runtime: node
+    plan: free
+    rootDir: .
+    buildCommand: npm install
+    startCommand: npm run start -w @boundary11/server
+    healthCheckPath: /api/v1/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATA_PROVIDER
+        value: supabase
+      - key: AUTH_PROVIDER
+        value: supabase
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: SUPABASE_DB_URL
+        sync: false
+      - key: DEMO_AUTH_SECRET
+        generateValue: true
+      - key: CORS_ORIGINS
+        sync: false

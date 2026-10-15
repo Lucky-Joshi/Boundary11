@@ -25,8 +25,10 @@ exception when duplicate_object then null; end $$;
 -- Mirror of profiles.role maintained by triggers. Privilege checks read this
 -- table instead of profiles so role identity lives somewhere a caller can
 -- never write directly. Customers get no write policies on it at all.
+-- FK targets auth.users (not profiles): b11_handle_new_user fires on the
+-- auth.users insert, which always happens before the matching profiles row.
 create table if not exists user_roles (
-  user_id uuid primary key references profiles (id) on delete cascade,
+  user_id uuid primary key references auth.users (id) on delete cascade,
   role user_role not null default 'customer',
   updated_at timestamptz not null default now()
 );
